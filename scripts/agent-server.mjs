@@ -494,6 +494,14 @@ function x402Guard(pricePath) {
     const price = X402_PRICES[pricePath];
     if (!price) return next();
 
+    // Owner bypass: if X-OWNER header matches agent wallet, skip payment
+    const ownerHeader = (req.headers['x-owner'] || '').toLowerCase();
+    if (ownerHeader && ownerHeader === account.address.toLowerCase()) {
+      log(`Owner bypass for ${pricePath} (${ownerHeader})`);
+      req.x402Settlement = { success: true, amount: 'Free (owner)', facilitator: 'none', gasSubsidy: true };
+      return next();
+    }
+
     const paymentHeader = req.headers['payment-signature'] || req.headers['x-payment'];
 
     if (!paymentHeader) {

@@ -966,6 +966,7 @@ nav{display:flex;align-items:center;gap:8px}
         <option value="50">Under 50 USDC</option>
       </select>
       <button class="btn btn-secondary btn-sm" onclick="loadAgents()">Refresh</button>
+      <button class="btn btn-secondary btn-sm" id="myAgentsBtn" onclick="toggleMyAgents()" style="display:none">My Agents</button>
     </div>
 
     <div id="agentsGrid" class="agents-grid">
@@ -1426,11 +1427,29 @@ function updateWalletUI() {
     btn.onclick = disconnectWallet;
     document.getElementById('dashboardNotConnected').classList.add('hidden');
     document.getElementById('dashboardContent').classList.remove('hidden');
+    document.getElementById('myAgentsBtn').style.display = '';
   }
+}
+
+let showingMyAgents = false;
+
+function toggleMyAgents() {
+  showingMyAgents = !showingMyAgents;
+  const btn = document.getElementById('myAgentsBtn');
+  if (showingMyAgents) {
+    btn.style.background = 'rgba(139,92,246,.15)';
+    btn.style.color = '#fff';
+    btn.style.border = '1px solid rgba(139,92,246,.3)';
+  } else {
+    btn.style = '';
+    btn.className = 'btn btn-secondary btn-sm';
+  }
+  applyFilters();
 }
 
 function disconnectWallet() {
   userAccount = null;
+  showingMyAgents = false;
   const display = document.getElementById('walletDisplay');
   const btn = document.getElementById('connectBtn');
   display.classList.add('hidden');
@@ -1438,6 +1457,7 @@ function disconnectWallet() {
   btn.onclick = connectWallet;
   document.getElementById('dashboardNotConnected').classList.remove('hidden');
   document.getElementById('dashboardContent').classList.add('hidden');
+  document.getElementById('myAgentsBtn').style.display = 'none';
   showToast('Wallet disconnected', 'success');
 }
 
@@ -1587,10 +1607,10 @@ async function loadAgents() {
       const agentsOffset = Number(decodeUint(raw, 0));
       const addrsOffset  = Number(decodeUint(raw, 32));
 
-      const addrCount = Number(decodeUint(raw, addrsOffset));
-      const addresses = [];
-      for (let i = 0; i < addrCount; i++) {
-        addresses.push(decodeAddress(raw, addrsOffset + 32 + i * 32));
+      const idsCount = Number(decodeUint(raw, addrsOffset));
+      const agentIds = [];
+      for (let i = 0; i < idsCount; i++) {
+        agentIds.push(Number(decodeUint(raw, addrsOffset + 32 + i * 32)));
       }
 
       const agentArrLen = Number(decodeUint(raw, agentsOffset));
@@ -1600,15 +1620,16 @@ async function loadAgents() {
         const elemOffset = Number(decodeUint(raw, arrDataStart + i * 32));
         const elemBase = agentsOffset + 32 + elemOffset;
 
-        const nameOffset = Number(decodeUint(raw, elemBase));
-        const descOffset = Number(decodeUint(raw, elemBase + 32));
-        const endpOffset = Number(decodeUint(raw, elemBase + 64));
-        const price      = decodeUint(raw, elemBase + 96);
-        const tagsOffset = Number(decodeUint(raw, elemBase + 128));
-        const active     = decodeBool(raw, elemBase + 160);
-        const regAt      = decodeUint(raw, elemBase + 192);
-        const totalTasks = Number(decodeUint(raw, elemBase + 224));
-        const totalEarned= decodeUint(raw, elemBase + 256);
+        const agentOwner = decodeAddress(raw, elemBase);
+        const nameOffset = Number(decodeUint(raw, elemBase + 32));
+        const descOffset = Number(decodeUint(raw, elemBase + 64));
+        const endpOffset = Number(decodeUint(raw, elemBase + 96));
+        const price      = decodeUint(raw, elemBase + 128);
+        const tagsOffset = Number(decodeUint(raw, elemBase + 160));
+        const active     = decodeBool(raw, elemBase + 192);
+        const regAt      = decodeUint(raw, elemBase + 224);
+        const totalTasks = Number(decodeUint(raw, elemBase + 256));
+        const totalEarned= decodeUint(raw, elemBase + 288);
 
         const name = decodeStringAt(raw, elemBase + nameOffset);
         const desc = decodeStringAt(raw, elemBase + descOffset);
@@ -1625,7 +1646,9 @@ async function loadAgents() {
         }
 
         allAgents.push({
-          address: addresses[i],
+          agentId: agentIds[i],
+          owner: agentOwner,
+          address: agentOwner,
           name, description: desc, endpoint,
           pricePerTask: price,
           skillTags, active,
@@ -1669,6 +1692,7 @@ function applyFilters() {
   const maxPrice = parseFloat(document.getElementById('filterPrice').value);
 
   let filtered = allAgents.filter(ag => {
+    if (showingMyAgents && userAccount && ag.owner?.toLowerCase() !== userAccount.toLowerCase()) return false;
     if (search && !ag.name.toLowerCase().includes(search) && !ag.skillTags.some(t => t.toLowerCase().includes(search)) && !ag.description.toLowerCase().includes(search)) return false;
     if (minRating > 0 && ag.rating < minRating) return false;
     if (maxPrice > 0 && Number(ag.pricePerTask) / 1e6 > maxPrice) return false;
@@ -1696,9 +1720,17 @@ function renderAgents(agents) {
       ? '<a class="agent-endpoint" href="' + escapeHtml(ag.endpoint) + '" target="_blank" rel="noopener" title="' + escapeHtml(ag.endpoint) + '">' + escapeHtml(ag.endpoint) + '</a>'
       : '';
 
-    const useBtn = ag.endpoint && ag.active
-      ? `<button class="btn btn-primary" onclick="tryX402Agent('${escapeHtml(ag.endpoint)}', '${escapeHtml(ag.name)}')">Use via x402</button>`
-      : `<button class="btn btn-secondary" disabled>Offline</button>`;
+    const isOwner = userAccount && ag.owner?.toLowerCase() === userAccount.toLowerCase();
+    const ownerBadge = isOwner ? '<span style="font-size:.7rem;font-weight:600;color:var(--success);background:rgba(34,197,94,.1);padding:2px 8px;border-radius:10px;border:1px solid rgba(34,197,94,.2)">Your Agent</span>' : '';
+
+    let useBtn;
+    if (!ag.endpoint || !ag.active) {
+      useBtn = '<button class="btn btn-secondary" disabled>Offline</button>';
+    } else if (isOwner) {
+      useBtn = `<button class="btn btn-success" onclick="tryX402Agent('${escapeHtml(ag.endpoint)}', '${escapeHtml(ag.name)}', true)">Use Free (Owner)</button>`;
+    } else {
+      useBtn = `<button class="btn btn-primary" onclick="tryX402Agent('${escapeHtml(ag.endpoint)}', '${escapeHtml(ag.name)}', false)">Use via x402</button>`;
+    }
 
     return `
       <div class="agent-card">
@@ -1706,7 +1738,10 @@ function renderAgents(agents) {
           <div class="agent-name">${escapeHtml(ag.name)}</div>
           <div class="agent-price">${price} USDC/task</div>
         </div>
-        <span class="agent-status-badge ${statusClass}"><span class="agent-status-dot ${statusClass}"></span>${statusLabel}</span>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span class="agent-status-badge ${statusClass}"><span class="agent-status-dot ${statusClass}"></span>${statusLabel}</span>
+          ${ownerBadge}
+        </div>
         <div class="agent-desc">${escapeHtml(ag.description)}</div>
         ${endpointHtml}
         <div class="agent-meta">
@@ -1740,9 +1775,8 @@ function escapeHtml(str) {
 /* =================================================================
    x402 AGENT INTERACTION
    ================================================================= */
-async function tryX402Agent(endpoint, agentName) {
-  // Try to fetch the agent's /api directory to discover its x402 services
-  showToast('Connecting to ' + agentName + '...', 'success');
+async function tryX402Agent(endpoint, agentName, isOwner) {
+  showToast('Connecting to ' + agentName + (isOwner ? ' (free for owner)' : '') + '...', 'success');
   try {
     // If endpoint doesn't end with /api, try appending it
     const apiUrl = endpoint.endsWith('/api') ? endpoint : endpoint.replace(/\/$/, '') + '/api';
@@ -1750,8 +1784,7 @@ async function tryX402Agent(endpoint, agentName) {
     const data = await resp.json();
 
     if (data.endpoints && data.endpoints.length > 0) {
-      // Show agent services modal
-      showAgentServicesModal(agentName, endpoint, data);
+      showAgentServicesModal(agentName, endpoint, data, isOwner);
     } else {
       showToast(agentName + ' has no x402 services available', 'error');
     }
@@ -1760,9 +1793,12 @@ async function tryX402Agent(endpoint, agentName) {
   }
 }
 
-function showAgentServicesModal(agentName, baseUrl, apiData) {
+function showAgentServicesModal(agentName, baseUrl, apiData, isOwner) {
   const servicesHtml = apiData.endpoints.map(ep => {
     const fullUrl = baseUrl.replace(/\/$/, '') + ep.path;
+    const priceLabel = isOwner ? '<span style="color:var(--success);font-weight:700">Free</span>' : `<span style="font-weight:700;color:var(--cyan)">${ep.price}</span>`;
+    const btnLabel = isOwner ? 'Use Free' : 'Try';
+    const btnClass = isOwner ? 'btn btn-success btn-sm' : 'btn btn-primary btn-sm';
     return `
       <div style="display:flex;justify-content:space-between;align-items:center;padding:12px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:8px">
         <div>
@@ -1770,8 +1806,8 @@ function showAgentServicesModal(agentName, baseUrl, apiData) {
           <div style="font-size:.8rem;color:var(--text-secondary)">${ep.description || ''}</div>
         </div>
         <div style="display:flex;align-items:center;gap:12px">
-          <span style="font-weight:700;color:var(--cyan)">${ep.price}</span>
-          <button class="btn btn-primary btn-sm" onclick="window.open('${fullUrl}','_blank')">Try</button>
+          ${priceLabel}
+          <button class="${btnClass}" onclick="window.open('${fullUrl}','_blank')">${btnLabel}</button>
         </div>
       </div>
     `;
