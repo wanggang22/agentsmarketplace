@@ -2415,23 +2415,24 @@ async function loadActivity() {
 
         // getTask returns a struct with an outer offset pointer (first 32 bytes = 0x20)
         const outerOff = Number(decodeUint(tRaw, 0)) * 2; // offset in hex chars
+        // New Task struct: client(0), agentId(32), desc(64), payment(96), resultHash(128), state(160), createdAt(192), ...
         const client = decodeAddress(tRaw, outerOff + 0);
-        const agent = decodeAddress(tRaw, outerOff + 32);
+        const agentId = Number(decodeUint(tRaw, outerOff + 32));
         const payment = Number(decodeUint(tRaw, outerOff + 96)) / 1e6;
         const state = Number(decodeUint(tRaw, outerOff + 160));
         const createdAt = Number(decodeUint(tRaw, outerOff + 192));
 
         const shortClient = client.slice(0,6) + '...' + client.slice(-4);
-        const shortAgent = agent.slice(0,6) + '...' + agent.slice(-4);
+        const agentLabel = 'Agent #' + agentId;
 
         if (state === 3) {
-          activities.push({ type: 'approved', text: `<strong>${shortClient}</strong> approved task #${i} and released <strong>${payment.toFixed(2)} USDC</strong> to <strong>${shortAgent}</strong>`, time: createdAt });
+          activities.push({ type: 'approved', text: `<strong>${shortClient}</strong> approved task #${i} and released <strong>${payment.toFixed(2)} USDC</strong> to <strong>${agentLabel}</strong>`, time: createdAt });
         } else if (state === 2) {
-          activities.push({ type: 'completed', text: `<strong>${shortAgent}</strong> completed task #${i}`, time: createdAt });
+          activities.push({ type: 'completed', text: `<strong>${agentLabel}</strong> completed task #${i}`, time: createdAt });
         } else if (state === 4) {
           activities.push({ type: 'disputed', text: `<strong>${shortClient}</strong> disputed task #${i}`, time: createdAt });
         }
-        activities.push({ type: 'created', text: `<strong>${shortClient}</strong> created task #${i} for <strong>${shortAgent}</strong> with <strong>${payment.toFixed(2)} USDC</strong>`, time: createdAt });
+        activities.push({ type: 'created', text: `<strong>${shortClient}</strong> created task #${i} for <strong>${agentLabel}</strong> with <strong>${payment.toFixed(2)} USDC</strong>`, time: createdAt });
       } catch(e) { /* skip */ }
     }
 
@@ -2442,19 +2443,18 @@ async function loadActivity() {
         const agRes = await rpcCall(CONTRACTS.AgentRegistry, agPagData);
         const agRaw = agRes.replace(/^0x/, '');
         const agentsOff = Number(decodeUint(agRaw, 0));
-        const addrsOff  = Number(decodeUint(agRaw, 32));
-        const addrCnt = Number(decodeUint(agRaw, addrsOff));
 
         const agArrLen = Number(decodeUint(agRaw, agentsOff));
         const arrStart = agentsOff + 32;
         for (let i = 0; i < agArrLen; i++) {
           const eOff = Number(decodeUint(agRaw, arrStart + i * 32));
           const eBase = agentsOff + 32 + eOff;
-          const nameOff = Number(decodeUint(agRaw, eBase));
-          const regAt = Number(decodeUint(agRaw, eBase + 192));
+          // New struct: owner(0), name(32), desc(64), endpoint(96), price(128), tags(160), active(192), regAt(224), ...
+          const ownerAddr = decodeAddress(agRaw, eBase);
+          const nameOff = Number(decodeUint(agRaw, eBase + 32));
+          const regAt = Number(decodeUint(agRaw, eBase + 224));
           const aName = decodeStringAt(agRaw, eBase + nameOff);
-          const addr = decodeAddress(agRaw, addrsOff + 32 + i * 32);
-          const shortAddr = addr.slice(0,6) + '...' + addr.slice(-4);
+          const shortAddr = ownerAddr.slice(0,6) + '...' + ownerAddr.slice(-4);
           activities.push({ type: 'registered', text: `<strong>${escapeHtml(aName)}</strong> (${shortAddr}) registered as an agent`, time: regAt });
         }
       } catch(e) { /* skip */ }
