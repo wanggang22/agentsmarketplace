@@ -830,7 +830,7 @@ nav{display:flex;align-items:center;gap:8px}
     <nav id="mainNav">
       <button class="nav-link active" onclick="showSection('marketplace')">Marketplace</button>
       <button class="nav-link" onclick="showSection('dashboard')">My Dashboard</button>
-      <button class="nav-link" onclick="showSection('nanopayments')">Nanopayments</button>
+      <button class="nav-link" onclick="showSection('nanopayments')">x402 Micropayments</button>
       <button class="nav-link" onclick="showSection('register')">Register Agent</button>
     </nav>
     <div class="wallet-area">
@@ -1045,7 +1045,7 @@ nav{display:flex;align-items:center;gap:8px}
 <section class="section hidden" id="sectionNanopayments">
   <div class="container">
     <div class="nanopay-hero">
-      <h2 class="section-title">Nanopayments &mdash; Gas-Free Micro-Tasks</h2>
+      <h2 class="section-title">x402 Micropayments &mdash; Gas-Free Micro-Tasks</h2>
       <p class="section-subtitle">Pay AI agents sub-cent amounts via x402 protocol on X Layer. Zero gas fees, instant settlement.</p>
       <span class="nanopay-protocol-tag">&#9889; x402 Protocol</span>
     </div>
@@ -1081,7 +1081,7 @@ nav{display:flex;align-items:center;gap:8px}
     <div class="nanopay-stats">
       <div class="nanopay-stat">
         <div class="nanopay-stat-value" id="nanopayCount"><div class="spinner" style="margin:0 auto"></div></div>
-        <div class="nanopay-stat-label">Total Nanopayments</div>
+        <div class="nanopay-stat-label">Total x402 Payments</div>
       </div>
       <div class="nanopay-stat">
         <div class="nanopay-stat-value" id="nanopayVolume"><div class="spinner" style="margin:0 auto"></div></div>
@@ -1121,7 +1121,7 @@ nav{display:flex;align-items:center;gap:8px}
         <h4>Platform</h4>
         <a href="#" onclick="showSection('marketplace');return false">Marketplace</a>
         <a href="#" onclick="showSection('register');return false">Register Agent</a>
-        <a href="#" onclick="showSection('nanopayments');return false">Nanopayments</a>
+        <a href="#" onclick="showSection('nanopayments');return false">x402 Micropayments</a>
         <a href="#" onclick="showSection('dashboard');return false">Dashboard</a>
       </div>
       <div class="footer-col">
@@ -1494,7 +1494,7 @@ function showSection(name) {
   document.getElementById('howItWorks').classList.toggle('hidden', name !== 'marketplace');
 
   // Update nav highlighting by matching section name to nav button text
-  const sectionMap = { marketplace: 'Marketplace', dashboard: 'My Dashboard', nanopayments: 'Nanopayments', register: 'Register Agent' };
+  const sectionMap = { marketplace: 'Marketplace', dashboard: 'My Dashboard', nanopayments: 'x402 Micropayments', register: 'Register Agent' };
   const targetLabel = sectionMap[name.toLowerCase()] || name;
   document.querySelectorAll('.nav-link').forEach(l => {
     l.classList.toggle('active', l.textContent.trim() === targetLabel);
@@ -2482,7 +2482,7 @@ function startNanopay(taskType, amountMicroUSDC, taskName) {
     <div class="nanopay-modal-overlay" id="nanopayOverlay" onclick="if(event.target===this)closeNanopay()">
       <div class="nanopay-modal">
         <div class="nanopay-modal-header">
-          <h2>&#9889; x402 Nanopayment</h2>
+          <h2>&#9889; x402 Micropayment</h2>
           <button class="modal-close" onclick="closeNanopay()">&times;</button>
         </div>
         <div class="nanopay-modal-body">
@@ -2594,7 +2594,7 @@ async function runNanopayFlow(taskType, amountMicroUSDC, mockResult) {
     txAnchor.textContent = txHash.substring(0, 10) + '...' + txHash.substring(txHash.length - 8);
     txLink.classList.add('visible');
 
-    showToast('Nanopayment recorded on-chain!', 'success', txHash);
+    showToast('x402 micropayment recorded on-chain!', 'success', txHash);
     loadNanopayStats();
   } catch(e) {
     showToast('On-chain recording failed: ' + (e.message || e), 'error');
