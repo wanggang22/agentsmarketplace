@@ -466,6 +466,7 @@ function escapeHtml(str) {
 // ── x402 Payment via OKX Facilitator ──────────────────────────────────────────
 
 const X402_PRICES = {
+  '/api/ask':       { amount: '30000',  display: '$0.03',  desc: 'Ask Anything — AI auto-selects tools, combines all capabilities into one answer' },
   '/api/analyze':   { amount: '10000',  display: '$0.01',  desc: 'Market Analysis — real-time price, K-line, trends + AI insights' },
   '/api/translate': { amount: '5000',   display: '$0.005', desc: 'AI Translation — any language, powered by Claude' },
   '/api/audit':     { amount: '50000',  display: '$0.05',  desc: 'Security Audit — token scan + AI contract review' },
@@ -475,7 +476,6 @@ const X402_PRICES = {
   '/api/portfolio': { amount: '10000',  display: '$0.01',  desc: 'Portfolio Analysis — wallet holdings across 20+ chains' },
   '/api/security':  { amount: '20000',  display: '$0.02',  desc: 'Security Scan — token + DApp risk detection' },
   '/api/gas':       { amount: '1000',   display: '$0.001', desc: 'Gas Estimation — current gas prices on any chain' },
-  '/api/ask':       { amount: '30000',  display: '$0.03',  desc: 'Ask Anything — AI auto-selects tools, combines all capabilities into one answer' },
 };
 
 function buildPaymentRequirements(pricePath) {
