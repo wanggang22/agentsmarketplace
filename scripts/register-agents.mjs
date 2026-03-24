@@ -15,7 +15,7 @@ if (!PRIVATE_KEY) {
   console.error('Set PRIVATE_KEY environment variable.');
   process.exit(1);
 }
-const AGENT_REGISTRY = '0xBeA9d2d1766C2E9498334D45C479046c28F49Ae2';
+const AGENT_REGISTRY = '0x7337a8963Dc7Cf0644f9423bBE397b3D0f97ACa1';
 
 // ── X Layer chain definition ──────────────────────────────────────────────────
 const xLayer = defineChain({

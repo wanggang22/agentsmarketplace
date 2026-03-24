@@ -20,10 +20,10 @@ contract ReputationEngine {
         uint256 totalTasks;
     }
 
-    mapping(address => Reputation) private _reputations;
-    mapping(address => Review[]) private _reviews;
+    mapping(uint256 => Reputation) private _reputations;  // agentId → reputation
+    mapping(uint256 => Review[]) private _reviews;         // agentId → reviews
 
-    event AgentRated(address indexed agent, address indexed reviewer, uint256 taskId, uint8 rating);
+    event AgentRated(uint256 indexed agentId, address indexed reviewer, uint256 taskId, uint8 rating);
     event TaskManagerUpdated(address indexed oldAddr, address indexed newAddr);
     event OwnershipTransferProposed(address indexed currentOwner, address indexed pendingOwner);
     event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
@@ -50,17 +50,16 @@ contract ReputationEngine {
     }
 
     function rateAgent(
-        address agent,
+        uint256 agentId,
         uint256 taskId,
         uint8 rating,
         string calldata comment,
         address reviewer
     ) external onlyTaskManager {
-        require(agent != address(0), "ReputationEngine: zero address agent");
         require(reviewer != address(0), "ReputationEngine: zero address reviewer");
         require(rating >= 1 && rating <= 5, "ReputationEngine: rating must be 1-5");
 
-        _reviews[agent].push(Review({
+        _reviews[agentId].push(Review({
             taskId: taskId,
             reviewer: reviewer,
             rating: rating,
@@ -68,12 +67,12 @@ contract ReputationEngine {
             timestamp: block.timestamp
         }));
 
-        Reputation storage rep = _reputations[agent];
+        Reputation storage rep = _reputations[agentId];
         rep.totalRatings += 1;
         rep.totalScore += rating;
         rep.totalTasks += 1;
 
-        emit AgentRated(agent, reviewer, taskId, rating);
+        emit AgentRated(agentId, reviewer, taskId, rating);
     }
 
     function transferOwnership(address newOwner) external onlyOwner {
@@ -91,25 +90,23 @@ contract ReputationEngine {
         emit OwnershipTransferred(previousOwner, owner);
     }
 
-    function getReputation(address agent)
+    function getReputation(uint256 agentId)
         external view
         returns (uint256 totalTasks, uint256 avgRatingX100, uint256 totalRatings)
     {
-        Reputation storage rep = _reputations[agent];
+        Reputation storage rep = _reputations[agentId];
         totalTasks = rep.totalTasks;
         totalRatings = rep.totalRatings;
         avgRatingX100 = rep.totalRatings > 0 ? (rep.totalScore * 100) / rep.totalRatings : 0;
     }
 
-    function getReviews(address agent, uint256 offset, uint256 limit)
+    function getReviews(uint256 agentId, uint256 offset, uint256 limit)
         external view returns (Review[] memory)
     {
-        Review[] storage allReviews = _reviews[agent];
+        Review[] storage allReviews = _reviews[agentId];
         uint256 total = allReviews.length;
 
-        if (offset >= total) {
-            return new Review[](0);
-        }
+        if (offset >= total) return new Review[](0);
 
         uint256 end = offset + limit;
         if (end > total) end = total;
@@ -122,7 +119,7 @@ contract ReputationEngine {
         return result;
     }
 
-    function getReviewCount(address agent) external view returns (uint256) {
-        return _reviews[agent].length;
+    function getReviewCount(uint256 agentId) external view returns (uint256) {
+        return _reviews[agentId].length;
     }
 }

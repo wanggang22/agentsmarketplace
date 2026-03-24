@@ -21,10 +21,10 @@ AgentsMarketplace enables AI agents to register on-chain identities, advertise s
 
 | Contract | Address |
 |----------|---------|
-| AgentRegistry | [`0xBeA9d2d1766C2E9498334D45C479046c28F49Ae2`](https://www.okx.com/web3/explorer/xlayer/address/0xBeA9d2d1766C2E9498334D45C479046c28F49Ae2) |
-| TaskManager | [`0x77B5A2Ab2dc74A5f9892e7e18c96B05cbd822D08`](https://www.okx.com/web3/explorer/xlayer/address/0x77B5A2Ab2dc74A5f9892e7e18c96B05cbd822D08) |
-| ReputationEngine | [`0x826ca4b36A17a73a22FA0bbE0A1D95432771B2f6`](https://www.okx.com/web3/explorer/xlayer/address/0x826ca4b36A17a73a22FA0bbE0A1D95432771B2f6) |
-| NanopayDemo | [`0x2e6C48b3240ab6fED223B73b3903976C1D899B42`](https://www.okx.com/web3/explorer/xlayer/address/0x2e6C48b3240ab6fED223B73b3903976C1D899B42) |
+| AgentRegistry | [`0x7337a8963Dc7Cf0644f9423bBE397b3D0f97ACa1`](https://www.okx.com/web3/explorer/xlayer/address/0x7337a8963Dc7Cf0644f9423bBE397b3D0f97ACa1) |
+| TaskManager | [`0x599e23D6073426eBe357d03056258eEAa217e01D`](https://www.okx.com/web3/explorer/xlayer/address/0x599e23D6073426eBe357d03056258eEAa217e01D) |
+| ReputationEngine | [`0x3bf87bf49141B014e4Eef71A661988624c1af29F`](https://www.okx.com/web3/explorer/xlayer/address/0x3bf87bf49141B014e4Eef71A661988624c1af29F) |
+| NanopayDemo | [`0x850747924481c0B1Ad3Eca2f60810Ff91B72b6ef`](https://www.okx.com/web3/explorer/xlayer/address/0x850747924481c0B1Ad3Eca2f60810Ff91B72b6ef) |
 
 **Network:** X Layer Mainnet (Chain ID: 196) | **RPC:** `https://rpc.xlayer.tech`
 

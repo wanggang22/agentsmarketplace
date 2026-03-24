@@ -3,65 +3,40 @@ pragma solidity ^0.8.20;
 
 /// @title AgentRegistry
 /// @notice AI Agent service marketplace registry for X Layer (Chain ID 196).
-///         pricePerTask is denominated in USDC with 6 decimals.
-/// @dev    This contract only tracks agent metadata and task accounting.
+///         One address can register multiple agents. Each agent has a unique numeric ID.
 contract AgentRegistry {
 
-    // ──────────────────────────────────────────────
-    //  Types
-    // ──────────────────────────────────────────────
-
-    /// @notice Full on-chain profile for a registered AI agent.
     struct Agent {
-        string   name;           // Human-readable agent name
-        string   description;    // Short description of what the agent does
-        string   endpoint;       // URL or URI clients use to reach the agent
-        uint256  pricePerTask;   // Cost per task in USDC (6 decimals, e.g. 1_000_000 = 1 USDC)
-        string[] skillTags;      // Searchable skill/category tags
-        bool     active;         // Whether the agent is currently accepting tasks
-        uint256  registeredAt;   // Block timestamp of initial registration
-        uint256  totalTasks;     // Lifetime tasks completed
-        uint256  totalEarned;    // Lifetime USDC earned (6 decimals)
+        address owner;
+        string   name;
+        string   description;
+        string   endpoint;
+        uint256  pricePerTask;
+        string[] skillTags;
+        bool     active;
+        uint256  registeredAt;
+        uint256  totalTasks;
+        uint256  totalEarned;
     }
 
-    // ──────────────────────────────────────────────
-    //  State
-    // ──────────────────────────────────────────────
-
-    /// @notice Contract deployer / admin.
     address public owner;
-
-    /// @notice Pending owner for two-step ownership transfer.
     address public pendingOwner;
-
-    /// @notice Authorised TaskManager contract that may call `incrementTasks`.
     address public taskManager;
 
-    /// @dev    agent address → Agent struct
-    mapping(address => Agent) private _agents;
+    /// @dev All agents, indexed by agentId (0-based).
+    Agent[] private _agents;
 
-    /// @dev    Ordered list of every address that has ever registered.
-    address[] private _agentAddresses;
+    /// @dev owner address → array of agentIds they own.
+    mapping(address => uint256[]) private _ownerAgents;
 
-    /// @dev    Quick lookup to avoid duplicate entries in _agentAddresses.
-    mapping(address => bool) private _registered;
-
-    // ──────────────────────────────────────────────
-    //  Events
-    // ──────────────────────────────────────────────
-
-    event AgentRegistered(address indexed agent, string name);
-    event AgentUpdated(address indexed agent);
-    event AgentDeactivated(address indexed agent);
-    event AgentActivated(address indexed agent);
-    event AgentUnregistered(address indexed agent);
+    event AgentRegistered(uint256 indexed agentId, address indexed owner, string name);
+    event AgentUpdated(uint256 indexed agentId);
+    event AgentDeactivated(uint256 indexed agentId);
+    event AgentActivated(uint256 indexed agentId);
+    event AgentUnregistered(uint256 indexed agentId);
     event TaskManagerUpdated(address indexed oldAddr, address indexed newAddr);
     event OwnershipTransferProposed(address indexed currentOwner, address indexed pendingOwner);
     event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
-
-    // ──────────────────────────────────────────────
-    //  Modifiers
-    // ──────────────────────────────────────────────
 
     modifier onlyOwner() {
         require(msg.sender == owner, "AgentRegistry: caller is not the owner");
@@ -76,22 +51,18 @@ contract AgentRegistry {
         _;
     }
 
-    modifier onlyRegistered() {
-        require(_registered[msg.sender], "AgentRegistry: agent not registered");
+    modifier onlyAgentOwner(uint256 agentId) {
+        require(agentId < _agents.length, "AgentRegistry: agent does not exist");
+        require(_agents[agentId].owner == msg.sender, "AgentRegistry: not the agent owner");
         _;
     }
 
-    // ──────────────────────────────────────────────
-    //  Constructor
-    // ──────────────────────────────────────────────
-
-    /// @notice Deploys the registry and sets the caller as owner.
     constructor() {
         owner = msg.sender;
     }
 
     // ──────────────────────────────────────────────
-    //  Agent Registration
+    //  Registration (one address can register many)
     // ──────────────────────────────────────────────
 
     function registerAgent(
@@ -100,13 +71,16 @@ contract AgentRegistry {
         string calldata _endpoint,
         uint256 _pricePerTask,
         string[] calldata _skillTags
-    ) external {
-        require(!_registered[msg.sender], "AgentRegistry: already registered");
+    ) external returns (uint256 agentId) {
         require(bytes(_name).length > 0, "AgentRegistry: name is required");
         require(bytes(_endpoint).length > 0, "AgentRegistry: endpoint is required");
         require(_skillTags.length <= 20, "AgentRegistry: too many tags");
 
-        Agent storage a = _agents[msg.sender];
+        agentId = _agents.length;
+        _agents.push();
+
+        Agent storage a = _agents[agentId];
+        a.owner        = msg.sender;
         a.name         = _name;
         a.description  = _description;
         a.endpoint     = _endpoint;
@@ -118,28 +92,28 @@ contract AgentRegistry {
             a.skillTags.push(_skillTags[i]);
         }
 
-        _agentAddresses.push(msg.sender);
-        _registered[msg.sender] = true;
+        _ownerAgents[msg.sender].push(agentId);
 
-        emit AgentRegistered(msg.sender, _name);
+        emit AgentRegistered(agentId, msg.sender, _name);
     }
 
     // ──────────────────────────────────────────────
-    //  Agent Updates
+    //  Updates
     // ──────────────────────────────────────────────
 
     function updateAgent(
+        uint256 agentId,
         string calldata _name,
         string calldata _description,
         string calldata _endpoint,
         uint256 _pricePerTask,
         string[] calldata _skillTags
-    ) external onlyRegistered {
+    ) external onlyAgentOwner(agentId) {
         require(bytes(_name).length > 0, "AgentRegistry: name is required");
         require(bytes(_endpoint).length > 0, "AgentRegistry: endpoint is required");
         require(_skillTags.length <= 20, "AgentRegistry: too many tags");
 
-        Agent storage a = _agents[msg.sender];
+        Agent storage a = _agents[agentId];
         a.name         = _name;
         a.description  = _description;
         a.endpoint     = _endpoint;
@@ -150,55 +124,34 @@ contract AgentRegistry {
             a.skillTags.push(_skillTags[i]);
         }
 
-        emit AgentUpdated(msg.sender);
-    }
-
-    // ──────────────────────────────────────────────
-    //  Unregister
-    // ──────────────────────────────────────────────
-
-    function unregisterAgent() external onlyRegistered {
-        Agent storage a = _agents[msg.sender];
-        delete a.name;
-        delete a.description;
-        delete a.endpoint;
-        a.pricePerTask = 0;
-        delete a.skillTags;
-        a.active = false;
-        a.registeredAt = 0;
-        a.totalTasks = 0;
-        a.totalEarned = 0;
-
-        _registered[msg.sender] = false;
-
-        emit AgentUnregistered(msg.sender);
+        emit AgentUpdated(agentId);
     }
 
     // ──────────────────────────────────────────────
     //  Activation / Deactivation
     // ──────────────────────────────────────────────
 
-    function deactivateAgent() external onlyRegistered {
-        require(_agents[msg.sender].active, "AgentRegistry: already inactive");
-        _agents[msg.sender].active = false;
-        emit AgentDeactivated(msg.sender);
+    function deactivateAgent(uint256 agentId) external onlyAgentOwner(agentId) {
+        require(_agents[agentId].active, "AgentRegistry: already inactive");
+        _agents[agentId].active = false;
+        emit AgentDeactivated(agentId);
     }
 
-    function activateAgent() external onlyRegistered {
-        require(!_agents[msg.sender].active, "AgentRegistry: already active");
-        _agents[msg.sender].active = true;
-        emit AgentActivated(msg.sender);
+    function activateAgent(uint256 agentId) external onlyAgentOwner(agentId) {
+        require(!_agents[agentId].active, "AgentRegistry: already active");
+        _agents[agentId].active = true;
+        emit AgentActivated(agentId);
     }
 
     // ──────────────────────────────────────────────
     //  Task Accounting
     // ──────────────────────────────────────────────
 
-    function incrementTasks(address _agent, uint256 _earned) external onlyTaskManager {
-        require(_registered[_agent], "AgentRegistry: agent not registered");
+    function incrementTasks(uint256 agentId, uint256 _earned) external onlyTaskManager {
+        require(agentId < _agents.length, "AgentRegistry: agent does not exist");
 
-        _agents[_agent].totalTasks  += 1;
-        _agents[_agent].totalEarned += _earned;
+        _agents[agentId].totalTasks  += 1;
+        _agents[agentId].totalEarned += _earned;
     }
 
     // ──────────────────────────────────────────────
@@ -211,10 +164,6 @@ contract AgentRegistry {
         taskManager = _taskManager;
         emit TaskManagerUpdated(oldTaskManager, _taskManager);
     }
-
-    // ──────────────────────────────────────────────
-    //  Ownership Transfer (Two-Step)
-    // ──────────────────────────────────────────────
 
     function transferOwnership(address newOwner) external onlyOwner {
         require(newOwner != address(0), "AgentRegistry: zero address");
@@ -235,42 +184,44 @@ contract AgentRegistry {
     //  View / Query Functions
     // ──────────────────────────────────────────────
 
-    function getAgent(address _agent) external view returns (Agent memory) {
-        return _agents[_agent];
+    function getAgent(uint256 agentId) external view returns (Agent memory) {
+        require(agentId < _agents.length, "AgentRegistry: agent does not exist");
+        return _agents[agentId];
+    }
+
+    function getAgentCount() external view returns (uint256) {
+        return _agents.length;
+    }
+
+    function getAgentsByOwner(address _owner) external view returns (uint256[] memory) {
+        return _ownerAgents[_owner];
     }
 
     function getAgentsPaginated(
         uint256 _offset,
         uint256 _limit
-    ) external view returns (Agent[] memory agents, address[] memory addresses) {
-        uint256 total = _agentAddresses.length;
+    ) external view returns (Agent[] memory agents, uint256[] memory ids) {
+        uint256 total = _agents.length;
 
         if (_offset >= total) {
-            return (new Agent[](0), new address[](0));
+            return (new Agent[](0), new uint256[](0));
         }
 
         uint256 remaining = total - _offset;
         uint256 count = _limit < remaining ? _limit : remaining;
 
-        agents    = new Agent[](count);
-        addresses = new address[](count);
+        agents = new Agent[](count);
+        ids    = new uint256[](count);
 
         for (uint256 i = 0; i < count; i++) {
-            address addr = _agentAddresses[_offset + i];
-            agents[i]    = _agents[addr];
-            addresses[i] = addr;
+            agents[i] = _agents[_offset + i];
+            ids[i]    = _offset + i;
         }
     }
 
-    function getAgentCount() external view returns (uint256) {
-        return _agentAddresses.length;
-    }
-
-    function isRegistered(address _agent) external view returns (bool) {
-        return _registered[_agent];
-    }
-
-    function isAgentActive(address _agent) external view returns (bool) {
-        return _registered[_agent] && _agents[_agent].active;
+    /// @notice Check if a specific agent ID is registered and active.
+    function isAgentActive(uint256 agentId) external view returns (bool) {
+        if (agentId >= _agents.length) return false;
+        return _agents[agentId].active;
     }
 }
