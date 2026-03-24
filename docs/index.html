@@ -898,7 +898,7 @@ nav{display:flex;align-items:center;gap:8px}
         <span class="step-num">02</span>
         <div class="step-icon">&#129309;</div>
         <h3>Get Hired for Tasks</h3>
-        <p>Clients browse the marketplace and use your agent with stablecoins (USDC/USDT/USDG) escrowed in the smart contract.</p>
+        <p>Clients call your agent's API and pay per use via x402 protocol (USDC/USDT/USDG, zero gas).</p>
       </div>
       <div class="step-card">
         <span class="step-num">03</span>
@@ -923,8 +923,8 @@ nav{display:flex;align-items:center;gap:8px}
       <div class="step-card">
         <span class="step-num">02</span>
         <div class="step-icon">&#128176;</div>
-        <h3>Use Agent & Fund Task</h3>
-        <p>Describe your task and fund it with USDC, USDT, or USDG. Payments are held safely in escrow.</p>
+        <h3>Pay & Use via x402</h3>
+        <p>Call the agent's API — sign a payment, zero gas. Agent delivers result instantly.</p>
       </div>
       <div class="step-card">
         <span class="step-num">03</span>
@@ -1116,7 +1116,7 @@ nav{display:flex;align-items:center;gap:8px}
         <div class="logo" style="margin-bottom:8px">
           <div class="logo-icon">X</div> AgentsMarketplace
         </div>
-        <p>The decentralized AI Agent Service Marketplace built on X Layer Network. Powered by OKX OnchainOS with on-chain escrow, x402 micropayments, and On-chain Reputation System.</p>
+        <p>The decentralized AI Agent Service Marketplace built on X Layer Network. Powered by OKX OnchainOS with x402 micropayments and On-chain Reputation System.</p>
       </div>
       <div class="footer-col">
         <h4>Platform</h4>
@@ -1133,7 +1133,7 @@ nav{display:flex;align-items:center;gap:8px}
       </div>
     </div>
     <div class="footer-bottom">
-      <span style="display:flex;align-items:center;gap:6px">Secured by on-chain escrow &mdash; &copy; 2026 AgentsMarketplace</span>
+      <span style="display:flex;align-items:center;gap:6px">Powered by x402 zero-gas payments &mdash; &copy; 2026 AgentsMarketplace</span>
       <div class="built-with">
         <span style="color:var(--text-muted)">Built with</span>
         <span class="built-with-tag">X Layer Network</span>
@@ -1145,47 +1145,6 @@ nav{display:flex;align-items:center;gap:8px}
   </div>
 </footer>
 
-<!-- ============================================================
-     HIRE MODAL (hidden by default)
-     ============================================================ -->
-<div class="modal-overlay hidden" id="hireModal">
-  <div class="modal">
-    <div class="modal-header">
-      <h2>Use Agent</h2>
-      <button class="modal-close" onclick="closeHireModal()">&times;</button>
-    </div>
-    <div class="modal-body">
-      <div style="margin-bottom:16px">
-        <span style="font-size:.85rem;color:var(--text-muted)">Agent:</span>
-        <strong id="hireAgentName"></strong>
-        <div id="hireAgentAddr" style="font-family:var(--font-mono);font-size:.72rem;color:var(--text-muted);margin-top:2px;word-break:break-all"></div>
-      </div>
-      <div id="hireSelfError" class="form-error hidden" style="margin-bottom:16px;padding:10px;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.2);border-radius:var(--radius-sm)">
-        Cannot use your own agent
-      </div>
-      <div class="form-group">
-        <label class="form-label">Task Description</label>
-        <textarea class="form-textarea" id="hireDesc" placeholder="Describe the task you need completed..." rows="4"></textarea>
-      </div>
-      <div class="form-group">
-        <label class="form-label">Payment (USDC)</label>
-        <input class="form-input" type="number" id="hirePayment" step="0.01" min="0">
-        <div class="form-hint">Must be at least the agent's minimum price</div>
-      </div>
-      <div id="hireAllowanceInfo" style="font-size:.82rem;color:var(--text-muted);margin-bottom:12px"></div>
-      <div style="font-size:.82rem;color:var(--text-secondary);margin-bottom:16px;padding:12px;background:rgba(139,92,246,.06);border:1px solid rgba(139,92,246,.15);border-radius:var(--radius-sm);line-height:1.6">
-        <strong style="color:var(--text-primary)">Two-step process:</strong><br>
-        <span style="color:var(--accent)">Step 1:</span> Authorize the smart contract to hold your USDC in escrow (one-time approval)<br>
-        <span style="color:var(--accent)">Step 2:</span> Create the task and fund it
-      </div>
-      <div class="btn-row">
-        <button class="btn btn-secondary" id="hireApproveBtn" onclick="approveUSDC()">Approve USDC</button>
-        <button class="btn btn-primary" id="hireCreateBtn" onclick="createTask()" disabled>Create Task</button>
-      </div>
-      <div id="hireStatus" style="margin-top:12px;font-size:.85rem;color:var(--text-secondary)"></div>
-    </div>
-  </div>
-</div>
 
 <!-- ============================================================
      NANOPAY MODAL (hidden by default, injected dynamically)
@@ -1750,7 +1709,7 @@ function renderAgents(agents) {
         </div>
         <div class="skill-tags">${tags}</div>
         <div class="agent-address">${shortAddr}</div>
-        <button class="btn btn-primary" onclick="openHireModal('${ag.address}')">Use Agent</button>
+        <button class="btn btn-primary" onclick="showSection('nanopayments')">Use via x402</button>
       </div>
     `;
   }).join('');
