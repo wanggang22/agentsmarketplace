@@ -15,6 +15,9 @@
     "deploy": "forge script script/Deploy.s.sol --rpc-url https://rpc.xlayer.tech --broadcast --legacy"
   },
   "dependencies": {
+    "@x402/evm": "^2.8.0",
+    "@x402/express": "^2.8.0",
+    "@x402/fetch": "^2.8.0",
     "express": "^5.2.1",
     "viem": "^2.47.6"
   }
