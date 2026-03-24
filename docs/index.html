@@ -1202,7 +1202,6 @@ const TASK_CSS    = ['created','inprogress','completed','approved','disputed','r
    ================================================================= */
 let userAccount = null;
 let allAgents = [];
-let currentHireAgent = null;
 let currentTab = 'client';
 
 /* =================================================================
@@ -1943,144 +1942,6 @@ function loadMarketplaceX402() {
   // No-op for now — agents load from chain via loadAgents()
 }
 
-/* =================================================================
-   HIRE MODAL (with self-hire prevention)
-   ================================================================= */
-function openHireModal(agentAddr) {
-  if (!userAccount) {
-    showToast('Please connect your wallet first', 'error');
-    connectWallet();
-    return;
-  }
-  currentHireAgent = agentAddr;
-  const ag = allAgents.find(a => a.address.toLowerCase() === agentAddr.toLowerCase());
-  if (!ag) return;
-
-  document.getElementById('hireAgentName').textContent = ag.name;
-  document.getElementById('hireAgentAddr').textContent = agentAddr;
-  document.getElementById('hirePayment').value = (Number(ag.pricePerTask) / 1e6).toFixed(2);
-  document.getElementById('hireDesc').value = '';
-  document.getElementById('hireStatus').textContent = '';
-  document.getElementById('hireAllowanceInfo').textContent = '';
-  document.getElementById('hireModal').classList.remove('hidden');
-
-  // Self-hire prevention
-  const isSelf = userAccount.toLowerCase() === agentAddr.toLowerCase();
-  const selfError = document.getElementById('hireSelfError');
-  selfError.classList.toggle('hidden', !isSelf);
-  document.getElementById('hireApproveBtn').disabled = isSelf;
-  document.getElementById('hireCreateBtn').disabled = true;
-
-  if (isSelf) {
-    document.getElementById('hireDesc').disabled = true;
-    document.getElementById('hirePayment').disabled = true;
-  } else {
-    document.getElementById('hireDesc').disabled = false;
-    document.getElementById('hirePayment').disabled = false;
-    checkAllowance();
-  }
-}
-
-function closeHireModal() {
-  document.getElementById('hireModal').classList.add('hidden');
-  currentHireAgent = null;
-}
-
-async function checkAllowance() {
-  if (!userAccount || !currentHireAgent) return;
-  try {
-    const data = SEL.allowance + encodeAddress(userAccount) + encodeAddress(CONTRACTS.TaskManager);
-    const result = await rpcCall(CONTRACTS.USDC, data);
-    const allowance = BigInt(result);
-    const payment = BigInt(Math.round(parseFloat(document.getElementById('hirePayment').value) * 1e6));
-    const info = document.getElementById('hireAllowanceInfo');
-    if (allowance >= payment && payment > 0n) {
-      info.innerHTML = '<span style="color:var(--success)">Allowance sufficient. You can create the task.</span>';
-      document.getElementById('hireCreateBtn').disabled = false;
-      document.getElementById('hireApproveBtn').textContent = 'Approved';
-      document.getElementById('hireApproveBtn').disabled = true;
-    } else {
-      info.innerHTML = 'Current allowance: ' + (Number(allowance) / 1e6).toFixed(2) + ' USDC. Approve first.';
-      document.getElementById('hireCreateBtn').disabled = true;
-      document.getElementById('hireApproveBtn').disabled = false;
-      document.getElementById('hireApproveBtn').textContent = 'Approve USDC';
-    }
-  } catch(e) {
-    console.error('Allowance check error:', e);
-  }
-}
-
-async function approveUSDC() {
-  const btn = document.getElementById('hireApproveBtn');
-  const status = document.getElementById('hireStatus');
-  try {
-    const payment = Math.round(parseFloat(document.getElementById('hirePayment').value) * 1e6);
-    if (payment <= 0) { showToast('Invalid payment amount', 'error'); return; }
-
-    btn.disabled = true;
-    btn.innerHTML = '<span class="spinner"></span> Approving...';
-    status.textContent = 'Sending approval transaction...';
-
-    const data = SEL.approve + encodeAddress(CONTRACTS.TaskManager) + encodeUint(payment);
-    const txHash = await sendTx(CONTRACTS.USDC, data);
-    status.textContent = 'Waiting for confirmation...';
-    await waitForTx(txHash);
-
-    showToast('USDC approved successfully', 'success', txHash);
-    status.textContent = 'Approved! Now create your task.';
-    btn.textContent = 'Approved';
-    document.getElementById('hireCreateBtn').disabled = false;
-  } catch(e) {
-    showToast('Approval failed: ' + e.message, 'error');
-    status.textContent = 'Approval failed: ' + e.message;
-    btn.disabled = false;
-    btn.textContent = 'Approve USDC';
-  }
-}
-
-async function createTask() {
-  const btn = document.getElementById('hireCreateBtn');
-  const status = document.getElementById('hireStatus');
-  try {
-    const desc = document.getElementById('hireDesc').value.trim();
-    const payment = Math.round(parseFloat(document.getElementById('hirePayment').value) * 1e6);
-    if (!desc) { showToast('Please enter a task description', 'error'); return; }
-    if (payment <= 0) { showToast('Invalid payment amount', 'error'); return; }
-
-    btn.disabled = true;
-    btn.innerHTML = '<span class="spinner"></span> Creating...';
-    status.textContent = 'Sending transaction...';
-
-    const descHex = utf8ToHex(desc);
-    const descByteLen = descHex.length / 2;
-    const descPadded = descHex.padEnd(Math.ceil(descHex.length / 64) * 64, '0');
-
-    const calldata = SEL.createTask
-      + encodeAddress(currentHireAgent)
-      + encodeUint(96)
-      + encodeUint(payment)
-      + encodeUint(descByteLen)
-      + descPadded;
-
-    const txHash = await sendTx(CONTRACTS.TaskManager, calldata);
-    status.textContent = 'Waiting for confirmation...';
-    await waitForTx(txHash);
-
-    showToast('Task created! Redirecting to dashboard...', 'success', txHash);
-    closeHireModal();
-    loadStats();
-    loadAgents();
-    // Redirect to dashboard after task creation
-    setTimeout(() => {
-      showSection('dashboard');
-    }, 800);
-  } catch(e) {
-    showToast('Task creation failed: ' + e.message, 'error');
-    status.textContent = 'Failed: ' + e.message;
-    btn.disabled = false;
-    btn.textContent = 'Create Task';
-  }
-}
 
 /* =================================================================
    REGISTER AGENT
@@ -2231,8 +2092,9 @@ async function loadDashboard() {
         */
         // getTask returns struct with outer offset pointer (first 32 bytes)
         const tOff = Number(decodeUint(tRaw, 0)) * 2; // offset in hex chars
+        // New v2 Task struct: client(0), agentId(32), desc(64), payment(96), resultHash(128), state(160), createdAt(192), acceptedAt(224), completedAt(256), disputedAt(288)
         const client = decodeAddress(tRaw, tOff + 0);
-        const agent = decodeAddress(tRaw, tOff + 32);
+        const agentId = Number(decodeUint(tRaw, tOff + 32));
         const descOffset = Number(decodeUint(tRaw, tOff + 64));
         const payment = decodeUint(tRaw, tOff + 96);
         const resultOffset = Number(decodeUint(tRaw, tOff + 128));
@@ -2245,7 +2107,7 @@ async function loadDashboard() {
         const description = decodeStringAt(tRaw, tOff + descOffset);
         const resultHash = decodeStringAt(tRaw, tOff + resultOffset);
 
-        tasks.push({ id, client, agent, description, payment, resultHash, state, createdAt, acceptedAt, completedAt, disputedAt });
+        tasks.push({ id, client, agent: 'Agent #' + agentId, agentId, description, payment, resultHash, state, createdAt, acceptedAt, completedAt, disputedAt });
       } catch(e) { console.error('Task fetch error:', e); }
     }));
 
@@ -2838,10 +2700,6 @@ window.addEventListener('load', async () => {
   }
 });
 
-/* Close modal on overlay click */
-document.getElementById('hireModal').addEventListener('click', function(e) {
-  if (e.target === this) closeHireModal();
-});
 
 /* Close result hash modal on overlay click */
 document.getElementById('resultHashModal').addEventListener('click', function(e) {
@@ -2850,7 +2708,7 @@ document.getElementById('resultHashModal').addEventListener('click', function(e)
 
 /* Close modal on Escape */
 document.addEventListener('keydown', function(e) {
-  if (e.key === 'Escape') { closeHireModal(); closeNanopay(); closeResultHashModal(); }
+  if (e.key === 'Escape') { closeNanopay(); closeResultHashModal(); const asm = document.getElementById('agentServicesModal'); if (asm) asm.remove(); }
 });
 </script>
 </body>
