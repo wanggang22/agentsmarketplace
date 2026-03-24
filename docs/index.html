@@ -1461,12 +1461,25 @@ function updateWalletUI() {
     display.classList.remove('hidden');
     badge.classList.remove('hidden');
     display.innerHTML = userAccount.slice(0,6) + '...' + userAccount.slice(-4) + '<span class="wallet-bal" id="walletBal"></span>';
-    btn.textContent = 'Connected';
-    btn.disabled = true;
-    btn.style.opacity = '.6';
+    btn.textContent = 'Disconnect';
+    btn.disabled = false;
+    btn.style.opacity = '1';
+    btn.onclick = disconnectWallet;
     document.getElementById('dashboardNotConnected').classList.add('hidden');
     document.getElementById('dashboardContent').classList.remove('hidden');
   }
+}
+
+function disconnectWallet() {
+  userAccount = null;
+  const display = document.getElementById('walletDisplay');
+  const btn = document.getElementById('connectBtn');
+  display.classList.add('hidden');
+  btn.textContent = 'Connect Wallet';
+  btn.onclick = connectWallet;
+  document.getElementById('dashboardNotConnected').classList.remove('hidden');
+  document.getElementById('dashboardContent').classList.add('hidden');
+  showToast('Wallet disconnected', 'success');
 }
 
 async function loadUSDCBalance() {
