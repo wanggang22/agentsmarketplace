@@ -466,15 +466,15 @@ function escapeHtml(str) {
 // ── x402 Payment via OKX Facilitator ──────────────────────────────────────────
 
 const X402_PRICES = {
-  '/api/analyze':   { amount: '10000',  display: '$0.01' },   // 0.01 USDC
-  '/api/translate': { amount: '5000',   display: '$0.005' },  // 0.005 USDC
-  '/api/audit':     { amount: '50000',  display: '$0.05' },   // 0.05 USDC
-  '/api/signals':   { amount: '20000',  display: '$0.02' },   // smart money signals
-  '/api/trenches':  { amount: '10000',  display: '$0.01' },   // meme coin scanner
-  '/api/swap':      { amount: '5000',   display: '$0.005' },  // DEX swap quote
-  '/api/portfolio': { amount: '10000',  display: '$0.01' },   // wallet portfolio
-  '/api/security':  { amount: '20000',  display: '$0.02' },   // full security scan
-  '/api/gas':       { amount: '1000',   display: '$0.001' },  // gas estimation
+  '/api/analyze':   { amount: '10000',  display: '$0.01',  desc: 'Market Analysis — real-time price, K-line, trends + AI insights' },
+  '/api/translate': { amount: '5000',   display: '$0.005', desc: 'AI Translation — any language, powered by Claude' },
+  '/api/audit':     { amount: '50000',  display: '$0.05',  desc: 'Security Audit — token scan + AI contract review' },
+  '/api/signals':   { amount: '20000',  display: '$0.02',  desc: 'Smart Money Signals — whale/KOL tracking + leaderboard' },
+  '/api/trenches':  { amount: '10000',  display: '$0.01',  desc: 'Meme Scanner — new token launches, dev reputation, rug detection' },
+  '/api/swap':      { amount: '5000',   display: '$0.005', desc: 'DEX Swap Quote — best price across 500+ liquidity sources' },
+  '/api/portfolio': { amount: '10000',  display: '$0.01',  desc: 'Portfolio Analysis — wallet holdings across 20+ chains' },
+  '/api/security':  { amount: '20000',  display: '$0.02',  desc: 'Security Scan — token + DApp risk detection' },
+  '/api/gas':       { amount: '1000',   display: '$0.001', desc: 'Gas Estimation — current gas prices on any chain' },
 };
 
 function buildPaymentRequirements(pricePath) {
@@ -887,7 +887,7 @@ app.get('/api', (_req, res) => {
     facilitator: 'OKX OnchainOS',
     gasSubsidy: 'OKX pays all settlement gas fees',
     endpoints: Object.entries(X402_PRICES).map(([path, p]) => ({
-      method: 'GET', path, price: p.display, priceRaw: p.amount,
+      method: 'GET', path, price: p.display, priceRaw: p.amount, description: p.desc,
     })),
     howToPay: {
       step1: 'GET the endpoint without payment → receive 402 + PAYMENT-REQUIRED header',

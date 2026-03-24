@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html>
+<head><title>AgentsMarketplace Logo</title></head>
+<body style="margin:0;display:flex;align-items:center;justify-content:center;min-height:100vh;background:#0a0b14">
+<svg width="400" height="400" viewBox="0 0 400 400" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0a0b14"/>
+      <stop offset="100%" style="stop-color:#12132a"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#8b5cf6"/>
+      <stop offset="50%" style="stop-color:#6366f1"/>
+      <stop offset="100%" style="stop-color:#3b82f6"/>
+    </linearGradient>
+    <linearGradient id="green" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#22c55e"/>
+      <stop offset="100%" style="stop-color:#06b6d4"/>
+    </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="8" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="softglow">
+      <feGaussianBlur stdDeviation="15" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="400" height="400" rx="40" fill="url(#bg)"/>
+
+  <!-- Ambient glow -->
+  <circle cx="200" cy="200" r="150" fill="#8b5cf6" opacity="0.06"/>
+  <circle cx="200" cy="200" r="100" fill="#6366f1" opacity="0.08"/>
+
+  <!-- Outer orbit ring -->
+  <circle cx="200" cy="200" r="130" fill="none" stroke="url(#accent)" stroke-width="1.5" opacity="0.2"/>
+  <circle cx="200" cy="200" r="90" fill="none" stroke="url(#accent)" stroke-width="1" opacity="0.15" stroke-dasharray="8 6"/>
+
+  <!-- Connection lines (agent network) -->
+  <g stroke="#6366f1" opacity="0.4">
+    <!-- Inner triangle -->
+    <line x1="200" y1="120" x2="130" y2="240" stroke-width="2"/>
+    <line x1="200" y1="120" x2="270" y2="240" stroke-width="2"/>
+    <line x1="130" y1="240" x2="270" y2="240" stroke-width="2"/>
+    <!-- Outer connections -->
+    <line x1="200" y1="120" x2="200" y2="70" stroke-width="1.5"/>
+    <line x1="130" y1="240" x2="80" y2="260" stroke-width="1.5"/>
+    <line x1="270" y1="240" x2="320" y2="260" stroke-width="1.5"/>
+    <!-- Cross connections -->
+    <line x1="200" y1="70" x2="80" y2="260" stroke-width="1" opacity="0.5"/>
+    <line x1="200" y1="70" x2="320" y2="260" stroke-width="1" opacity="0.5"/>
+    <line x1="80" y1="260" x2="320" y2="260" stroke-width="1" opacity="0.5"/>
+    <!-- To center -->
+    <line x1="200" y1="120" x2="200" y2="195" stroke-width="1.5"/>
+    <line x1="130" y1="240" x2="200" y2="195" stroke-width="1.5"/>
+    <line x1="270" y1="240" x2="200" y2="195" stroke-width="1.5"/>
+  </g>
+
+  <!-- Agent nodes (inner - main agents) -->
+  <circle cx="200" cy="120" r="14" fill="url(#accent)" filter="url(#glow)"/>
+  <circle cx="130" cy="240" r="14" fill="url(#accent)" filter="url(#glow)"/>
+  <circle cx="270" cy="240" r="14" fill="url(#accent)" filter="url(#glow)"/>
+
+  <!-- Agent nodes (outer - connected agents) -->
+  <circle cx="200" cy="70" r="9" fill="#8b5cf6" opacity="0.7" filter="url(#glow)"/>
+  <circle cx="80" cy="260" r="9" fill="#6366f1" opacity="0.7" filter="url(#glow)"/>
+  <circle cx="320" cy="260" r="9" fill="#3b82f6" opacity="0.7" filter="url(#glow)"/>
+
+  <!-- Center hub (marketplace) -->
+  <circle cx="200" cy="195" r="20" fill="url(#green)" filter="url(#softglow)"/>
+  <!-- Payment symbol inside hub (two arrows = exchange) -->
+  <path d="M192 190 L208 190 M204 186 L208 190 L204 194" stroke="white" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M208 200 L192 200 M196 196 L192 200 L196 204" stroke="white" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- Small decorative dots on orbit -->
+  <circle cx="290" cy="110" r="3" fill="#8b5cf6" opacity="0.5"/>
+  <circle cx="110" cy="140" r="3" fill="#6366f1" opacity="0.5"/>
+  <circle cx="310" cy="180" r="3" fill="#3b82f6" opacity="0.4"/>
+  <circle cx="90" cy="200" r="3" fill="#8b5cf6" opacity="0.4"/>
+  <circle cx="150" cy="310" r="3" fill="#6366f1" opacity="0.3"/>
+  <circle cx="250" cy="310" r="3" fill="#3b82f6" opacity="0.3"/>
+</svg>
+</body>
+</html>
