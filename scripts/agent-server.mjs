@@ -4,25 +4,19 @@
  *
  * Two payment modes:
  *   1. On-chain escrow (TaskManager) — for large tasks ($0.1+)
- *   2. x402 micropayments — pay-per-API-call ($0.001+), no gas for caller
+ *   2. x402 micropayments — pay-per-API-call ($0.001+), caller signs USDC auth off-chain,
+ *      agent settles via transferWithAuthorization (EIP-3009). No gas for caller.
  *
  * Usage:
  *   AGENT_PK=0x... node scripts/agent-server.mjs
- *
- * Environment:
- *   AGENT_PK — private key (hex, with 0x prefix)
- *   PORT     — HTTP port (default 3080)
- *   POLL_MS  — task-poll interval in ms (default 5000)
  */
 
 import {
   createPublicClient, createWalletClient, http, defineChain, parseAbi, formatUnits, keccak256, toHex,
+  verifyTypedData, encodeFunctionData,
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import express from 'express';
-import { paymentMiddleware, x402ResourceServer } from '@x402/express';
-import { ExactEvmScheme } from '@x402/evm/exact/server';
-import { HTTPFacilitatorClient } from '@x402/core/server';
 
 const PORT    = Number(process.env.PORT) || 3080;
 const POLL_MS = Number(process.env.POLL_MS) || 5000;
@@ -34,6 +28,7 @@ const RPC_URL         = 'https://rpc.xlayer.tech';
 const AGENT_REGISTRY  = '0xBeA9d2d1766C2E9498334D45C479046c28F49Ae2';
 const TASK_MANAGER    = '0x77B5A2Ab2dc74A5f9892e7e18c96B05cbd822D08';
 const NANOPAY_DEMO    = '0x2e6C48b3240ab6fED223B73b3903976C1D899B42';
+const USDC_ADDRESS    = '0x74b7F16337b8972027F6196A17a631aC6dE26d22';
 
 const xLayer = defineChain({
   id: 196, name: 'X Layer',
@@ -57,6 +52,12 @@ const nanopayAbi = parseAbi([
   'function recordPayment(address agent,uint256 amount,string taskType)',
 ]);
 
+const usdcAbi = parseAbi([
+  'function transferWithAuthorization(address from,address to,uint256 value,uint256 validAfter,uint256 validBefore,bytes32 nonce,uint8 v,bytes32 r,bytes32 s)',
+  'function balanceOf(address) view returns (uint256)',
+  'function authorizationState(address authorizer,bytes32 nonce) view returns (bool)',
+]);
+
 const account = privateKeyToAccount(AGENT_PK);
 const publicClient = createPublicClient({ chain: xLayer, transport: http(RPC_URL) });
 const walletClient = createWalletClient({ account, chain: xLayer, transport: http(RPC_URL) });
@@ -64,6 +65,7 @@ const walletClient = createWalletClient({ account, chain: xLayer, transport: htt
 const state = {
   agentName: '(loading...)', agentAddress: account.address,
   status: 'starting', tasksProcessed: 0, totalEarned: 0n,
+  x402Calls: 0, x402Earned: 0n,
   recentLogs: [], lastKnownTaskCount: 0n,
   startedAt: new Date(), processing: new Set(),
 };
@@ -73,8 +75,10 @@ function log(msg) {
   const entry = `[${ts}] ${msg}`;
   console.log(entry);
   state.recentLogs.push(entry);
-  if (state.recentLogs.length > 10) state.recentLogs.shift();
+  if (state.recentLogs.length > 20) state.recentLogs.shift();
 }
+
+// ── AI result generators ──────────────────────────────────────────────────────
 
 function classifyTask(d) {
   const l = d.toLowerCase();
@@ -94,6 +98,8 @@ function generateResult(description, taskType) {
   return JSON.stringify(results[taskType] || results.general);
 }
 
+// ── On-chain tx helper ────────────────────────────────────────────────────────
+
 async function sendTx(params, label) {
   log(`  TX: ${label}...`);
   try {
@@ -107,6 +113,8 @@ async function sendTx(params, label) {
   }
 }
 
+// ── TaskManager polling (escrow tasks) ────────────────────────────────────────
+
 async function processTask(taskId) {
   if (state.processing.has(taskId)) return;
   state.processing.add(taskId);
@@ -116,7 +124,6 @@ async function processTask(taskId) {
     if (task.state !== 0) return;
 
     log(`New task #${taskId}: ${task.description.slice(0, 80)}`);
-
     await sendTx({ address: TASK_MANAGER, abi: taskManagerAbi, functionName: 'acceptTask', args: [taskId] }, `acceptTask(${taskId})`);
 
     const taskType = classifyTask(task.description);
@@ -126,7 +133,6 @@ async function processTask(taskId) {
 
     const resultBody = generateResult(task.description, taskType);
     const resultHash = keccak256(toHex(resultBody)).slice(0, 50);
-
     await sendTx({ address: TASK_MANAGER, abi: taskManagerAbi, functionName: 'completeTask', args: [taskId, resultHash] }, `completeTask(${taskId})`);
 
     try {
@@ -165,81 +171,135 @@ async function poll() {
   pollTimer = setTimeout(poll, POLL_MS);
 }
 
+// ── Express app ───────────────────────────────────────────────────────────────
+
 const app = express();
+app.use(express.json());
 
 function escapeHtml(str) {
   return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-app.get('/', (_req, res) => {
-  const uptime = Math.floor((Date.now() - state.startedAt.getTime()) / 1000);
-  const uptimeStr = `${Math.floor(uptime / 3600)}h ${Math.floor((uptime % 3600) / 60)}m ${uptime % 60}s`;
-  const earned = formatUnits(state.totalEarned, 6);
-  const statusColor = state.status === 'listening' ? '#00e676' : '#ffa726';
-  const logsHtml = state.recentLogs.length
-    ? state.recentLogs.map((l) => `<div style="font-family:monospace;font-size:.8rem;padding:4px 0;border-bottom:1px solid #21262d">${escapeHtml(l)}</div>`).join('')
-    : '<div style="color:#484f58">No activity yet.</div>';
+// ── x402 Payment Definitions ──────────────────────────────────────────────────
 
-  res.send(`<!DOCTYPE html><html><head><meta charset="utf-8"><meta http-equiv="refresh" content="10"><title>XLayerAgent Server</title>
-<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:system-ui;background:#0d1117;color:#c9d1d9;padding:2rem}.c{max-width:720px;margin:0 auto}h1{color:#58a6ff;margin-bottom:.5rem}.card{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:1.25rem;margin-bottom:1.25rem}</style></head>
-<body><div class="c"><h1>XLayerAgent Server</h1><p style="color:#8b949e;margin-bottom:2rem">AI Agent Execution Bridge — X Layer</p>
-<div class="card"><b>${escapeHtml(state.agentName)}</b> <span style="color:${statusColor}">${state.status}</span><br><code style="font-size:.85rem">${state.agentAddress}</code></div>
-<div class="card">Tasks: ${state.tasksProcessed} | Earned: ${earned} USDC | x402 Calls: ${state.x402Calls || 0} | Uptime: ${uptimeStr}</div>
-<div class="card"><b>x402 Pay-per-call API</b><br><code>/api/analyze</code> $0.01 | <code>/api/translate</code> $0.005 | <code>/api/audit</code> $0.05<br><a href="/api" style="color:#58a6ff">GET /api</a> — full endpoint list (free)</div>
-<div class="card">${logsHtml}</div>
-<p style="text-align:center;color:#484f58;margin-top:2rem">X Layer (chain 196) | ${RPC_URL}</p></div></body></html>`);
-});
-
-app.get('/status', (_req, res) => {
-  res.json({ agent: state.agentName, address: state.agentAddress, status: state.status, tasksProcessed: state.tasksProcessed, totalEarned: formatUnits(state.totalEarned, 6), x402Calls: state.x402Calls || 0 });
-});
-
-// ── x402 Micropayment API Endpoints ─────────────────────────────────────────
-
-const USDC_XLAYER = '0x74b7F16337b8972027F6196A17a631aC6dE26d22';
-const X402_NETWORK = 'eip155:196';
-
-// Set up x402 resource server with facilitator
-let x402Server = null;
-try {
-  const facilitatorClient = new HTTPFacilitatorClient({ url: 'https://facilitator.x402.org' });
-  x402Server = new x402ResourceServer(facilitatorClient)
-    .register(X402_NETWORK, new ExactEvmScheme());
-  log('x402 resource server initialized');
-} catch (err) {
-  log(`x402 init warning: ${err.message} — x402 endpoints will return free responses`);
-}
-
-// x402 route config: pay-per-call endpoints
-const x402Routes = {
-  'GET /api/analyze': {
-    accepts: { scheme: 'exact', price: '$0.01', network: X402_NETWORK, asset: USDC_XLAYER, payTo: account.address },
-    description: 'Quick data analysis by AI agent',
-  },
-  'GET /api/translate': {
-    accepts: { scheme: 'exact', price: '$0.005', network: X402_NETWORK, asset: USDC_XLAYER, payTo: account.address },
-    description: 'AI-powered text translation',
-  },
-  'GET /api/audit': {
-    accepts: { scheme: 'exact', price: '$0.05', network: X402_NETWORK, asset: USDC_XLAYER, payTo: account.address },
-    description: 'Smart contract security audit snippet',
-  },
+const X402_PRICES = {
+  '/api/analyze':   { amount: 10000n, display: '$0.01' },   // 0.01 USDC = 10000 (6 decimals)
+  '/api/translate': { amount: 5000n,  display: '$0.005' },  // 0.005 USDC
+  '/api/audit':     { amount: 50000n, display: '$0.05' },   // 0.05 USDC
 };
 
-// Apply x402 middleware only if server initialized
-if (x402Server) {
-  app.use(paymentMiddleware(x402Routes, x402Server));
+// Build x402 PaymentRequirements for a given route
+function buildPaymentRequirements(path) {
+  const price = X402_PRICES[path];
+  if (!price) return null;
+  return {
+    x402Version: 1,
+    accepts: [{
+      scheme: 'exact',
+      network: 'eip155:196',
+      maxAmountRequired: price.amount.toString(),
+      resource: path,
+      description: `Pay ${price.display} USDC to access this API`,
+      payTo: account.address,
+      asset: USDC_ADDRESS,
+      maxTimeoutSeconds: 300,
+    }],
+  };
 }
 
-// Initialize x402 call counter
-state.x402Calls = 0;
+// x402 middleware: check for PAYMENT-SIGNATURE header, verify, settle
+async function x402Middleware(req, res, next) {
+  const path = req._x402PricePath || req.path;
+  const price = X402_PRICES[path];
+  if (!price) return next();
 
-// x402-protected API: Quick Analysis ($0.01)
-app.get('/api/analyze', (req, res) => {
+  // Check for payment header (x402 v2: PAYMENT-SIGNATURE, v1: X-PAYMENT)
+  const paymentHeader = req.headers['payment-signature'] || req.headers['x-payment'];
+
+  if (!paymentHeader) {
+    // No payment → return 402 with payment requirements
+    const requirements = buildPaymentRequirements(path);
+    const encoded = Buffer.from(JSON.stringify(requirements)).toString('base64');
+    res.setHeader('PAYMENT-REQUIRED', encoded);
+    return res.status(402).json(requirements);
+  }
+
+  // Parse and verify the payment
+  try {
+    const payload = JSON.parse(Buffer.from(paymentHeader, 'base64').toString('utf-8'));
+    const auth = payload.payload?.authorization;
+
+    if (!auth) {
+      return res.status(400).json({ error: 'Invalid payment payload: missing authorization' });
+    }
+
+    // Verify: payment is to us, amount is sufficient, not expired
+    if (auth.to.toLowerCase() !== account.address.toLowerCase()) {
+      return res.status(400).json({ error: 'Payment recipient mismatch' });
+    }
+    if (BigInt(auth.value) < price.amount) {
+      return res.status(400).json({ error: `Insufficient payment: need ${price.amount}, got ${auth.value}` });
+    }
+    if (auth.validBefore && Number(auth.validBefore) < Math.floor(Date.now() / 1000)) {
+      return res.status(400).json({ error: 'Payment authorization expired' });
+    }
+
+    // Settle: call transferWithAuthorization on USDC
+    const sig = payload.payload.signature;
+    const v = parseInt(sig.slice(130, 132), 16);
+    const r = '0x' + sig.slice(2, 66);
+    const s = '0x' + sig.slice(66, 130);
+
+    log(`x402 settling ${formatUnits(price.amount, 6)} USDC from ${auth.from.slice(0, 10)}...`);
+
+    const hash = await walletClient.writeContract({
+      address: USDC_ADDRESS,
+      abi: usdcAbi,
+      functionName: 'transferWithAuthorization',
+      args: [auth.from, auth.to, BigInt(auth.value), BigInt(auth.validAfter || 0), BigInt(auth.validBefore), auth.nonce, v, r, s],
+    });
+
+    const receipt = await publicClient.waitForTransactionReceipt({ hash, timeout: 30_000 });
+    log(`x402 settled! tx: ${hash}, block: ${receipt.blockNumber}`);
+
+    // Attach settlement info for the response
+    req.x402Settlement = {
+      success: true,
+      transaction: hash,
+      network: 'eip155:196',
+      payer: auth.from,
+      amount: formatUnits(price.amount, 6),
+    };
+
+    state.x402Calls++;
+    state.x402Earned += price.amount;
+
+    next();
+  } catch (err) {
+    log(`x402 settlement failed: ${err.shortMessage || err.message}`);
+    return res.status(402).json({
+      error: 'Payment settlement failed',
+      reason: err.shortMessage || err.message,
+      ...buildPaymentRequirements(path),
+    });
+  }
+}
+
+// Apply x402 middleware to API routes (use route-level middleware on GET)
+function x402Guard(pricePath) {
+  return (req, res, next) => {
+    // Override path for price lookup since express strips the mount path
+    req._x402PricePath = pricePath;
+    x402Middleware(req, res, next);
+  };
+}
+
+// ── API Endpoints ─────────────────────────────────────────────────────────────
+
+app.get('/api/analyze', x402Guard('/api/analyze'), (req, res) => {
   const query = req.query.q || 'general market data';
-  state.x402Calls++;
-  log(`x402 /api/analyze called: "${query}"`);
-  res.json({
+  log(`x402 /api/analyze: "${query}"`);
+  const response = {
     agent: state.agentName,
     type: 'data-analysis',
     query,
@@ -253,39 +313,40 @@ app.get('/api/analyze', (req, res) => {
         'Seasonal pattern detected with peak activity in Q4.',
       ],
     },
-    payment: { protocol: 'x402', amount: '$0.01', network: 'X Layer' },
     timestamp: new Date().toISOString(),
-  });
+  };
+  if (req.x402Settlement) {
+    response.payment = req.x402Settlement;
+    res.setHeader('PAYMENT-RESPONSE', Buffer.from(JSON.stringify(req.x402Settlement)).toString('base64'));
+  }
+  res.json(response);
 });
 
-// x402-protected API: Translation ($0.005)
-app.get('/api/translate', (req, res) => {
+app.get('/api/translate', x402Guard('/api/translate'), (req, res) => {
   const text = req.query.text || 'Hello world';
   const to = req.query.to || 'es';
-  state.x402Calls++;
-  log(`x402 /api/translate called: "${text}" → ${to}`);
-
+  log(`x402 /api/translate: "${text}" → ${to}`);
   const translations = { es: 'Hola mundo', zh: '你好世界', ja: 'こんにちは世界', ko: '안녕하세요 세계', fr: 'Bonjour le monde' };
-  const result = translations[to] || `[${to}] ${text}`;
-
-  res.json({
+  const response = {
     agent: state.agentName,
     type: 'translation',
     source: text,
     target: to,
-    result,
+    result: translations[to] || `[${to}] ${text}`,
     confidence: 0.96,
-    payment: { protocol: 'x402', amount: '$0.005', network: 'X Layer' },
     timestamp: new Date().toISOString(),
-  });
+  };
+  if (req.x402Settlement) {
+    response.payment = req.x402Settlement;
+    res.setHeader('PAYMENT-RESPONSE', Buffer.from(JSON.stringify(req.x402Settlement)).toString('base64'));
+  }
+  res.json(response);
 });
 
-// x402-protected API: Audit ($0.05)
-app.get('/api/audit', (req, res) => {
+app.get('/api/audit', x402Guard('/api/audit'), (req, res) => {
   const contract = req.query.contract || '0x0000000000000000000000000000000000000000';
-  state.x402Calls++;
-  log(`x402 /api/audit called: ${contract}`);
-  res.json({
+  log(`x402 /api/audit: ${contract}`);
+  const response = {
     agent: state.agentName,
     type: 'security-audit',
     contract,
@@ -296,31 +357,76 @@ app.get('/api/audit', (req, res) => {
         { severity: 'LOW', title: 'Missing event on state change', recommendation: 'Add events for off-chain indexing.' },
       ],
       gasOptimizations: ['Cache storage reads in loops.', 'Use uint96 for payment amounts.'],
-      conclusion: 'No critical issues found. Safe for deployment with minor improvements.',
+      conclusion: 'No critical issues found.',
     },
-    payment: { protocol: 'x402', amount: '$0.05', network: 'X Layer' },
     timestamp: new Date().toISOString(),
-  });
+  };
+  if (req.x402Settlement) {
+    response.payment = req.x402Settlement;
+    res.setHeader('PAYMENT-RESPONSE', Buffer.from(JSON.stringify(req.x402Settlement)).toString('base64'));
+  }
+  res.json(response);
 });
 
-// Free endpoint: list available x402 APIs and pricing
+// Free: API directory + x402 payment instructions
 app.get('/api', (_req, res) => {
   res.json({
     agent: state.agentName,
-    protocol: 'x402',
+    protocol: 'x402 (EIP-3009 transferWithAuthorization)',
     network: 'X Layer (eip155:196)',
-    endpoints: [
-      { path: 'GET /api/analyze?q=...', price: '$0.01', description: 'Quick data analysis' },
-      { path: 'GET /api/translate?text=...&to=es', price: '$0.005', description: 'Text translation' },
-      { path: 'GET /api/audit?contract=0x...', price: '$0.05', description: 'Smart contract audit' },
-    ],
+    usdc: USDC_ADDRESS,
     payTo: account.address,
-    usdc: USDC_XLAYER,
+    endpoints: Object.entries(X402_PRICES).map(([path, p]) => ({
+      method: 'GET',
+      path,
+      price: p.display,
+      priceRaw: p.amount.toString(),
+    })),
+    howToPay: {
+      step1: 'GET the endpoint without payment → receive 402 + PAYMENT-REQUIRED header',
+      step2: 'Sign a transferWithAuthorization (EIP-3009) for the required amount',
+      step3: 'Re-send the request with PAYMENT-SIGNATURE header (base64 encoded payload)',
+      step4: 'Agent settles on-chain and returns 200 + result + PAYMENT-RESPONSE header',
+    },
   });
 });
 
+// ── Dashboard ─────────────────────────────────────────────────────────────────
+
+app.get('/', (_req, res) => {
+  const uptime = Math.floor((Date.now() - state.startedAt.getTime()) / 1000);
+  const uptimeStr = `${Math.floor(uptime / 3600)}h ${Math.floor((uptime % 3600) / 60)}m ${uptime % 60}s`;
+  const earned = formatUnits(state.totalEarned, 6);
+  const x402Earned = formatUnits(state.x402Earned, 6);
+  const statusColor = state.status === 'listening' ? '#00e676' : '#ffa726';
+  const logsHtml = state.recentLogs.length
+    ? state.recentLogs.map((l) => `<div style="font-family:monospace;font-size:.8rem;padding:4px 0;border-bottom:1px solid #21262d">${escapeHtml(l)}</div>`).join('')
+    : '<div style="color:#484f58">No activity yet.</div>';
+
+  res.send(`<!DOCTYPE html><html><head><meta charset="utf-8"><meta http-equiv="refresh" content="10"><title>XLayerAgent Server</title>
+<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:system-ui;background:#0d1117;color:#c9d1d9;padding:2rem}.c{max-width:720px;margin:0 auto}h1{color:#58a6ff;margin-bottom:.5rem}.card{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:1.25rem;margin-bottom:1.25rem}code{background:#21262d;padding:2px 6px;border-radius:4px;font-size:.85rem}a{color:#58a6ff}</style></head>
+<body><div class="c"><h1>XLayerAgent Server</h1><p style="color:#8b949e;margin-bottom:2rem">AI Agent Execution Bridge — X Layer + x402</p>
+<div class="card"><b>${escapeHtml(state.agentName)}</b> <span style="color:${statusColor}">${state.status}</span><br><code>${state.agentAddress}</code></div>
+<div class="card"><b>On-chain Escrow</b><br>Tasks: ${state.tasksProcessed} | Earned: ${earned} USDC | Uptime: ${uptimeStr}</div>
+<div class="card"><b>x402 Micropayments</b><br>Calls: ${state.x402Calls} | Earned: ${x402Earned} USDC<br><br>
+<code>GET /api/analyze</code> $0.01 &nbsp; <code>GET /api/translate</code> $0.005 &nbsp; <code>GET /api/audit</code> $0.05<br><br>
+<a href="/api">GET /api</a> — endpoint list + payment instructions (free)</div>
+<div class="card"><b>Activity</b><br>${logsHtml}</div>
+<p style="text-align:center;color:#484f58;margin-top:2rem">X Layer (chain 196) | x402 via EIP-3009 | ${RPC_URL}</p></div></body></html>`);
+});
+
+app.get('/status', (_req, res) => {
+  res.json({
+    agent: state.agentName, address: state.agentAddress, status: state.status,
+    tasksProcessed: state.tasksProcessed, totalEarned: formatUnits(state.totalEarned, 6),
+    x402Calls: state.x402Calls, x402Earned: formatUnits(state.x402Earned, 6),
+  });
+});
+
+// ── Bootstrap ─────────────────────────────────────────────────────────────────
+
 async function start() {
-  console.log(`\n${'='.repeat(60)}\n  XLayerAgent Server\n${'='.repeat(60)}`);
+  console.log(`\n${'='.repeat(60)}\n  XLayerAgent Server (Escrow + x402)\n${'='.repeat(60)}`);
   console.log(`  Address: ${account.address}\n  RPC: ${RPC_URL}\n  Chain: 196\n  Dashboard: http://localhost:${PORT}\n`);
 
   try {
@@ -336,7 +442,7 @@ async function start() {
   } catch (err) { log(`Registration check failed: ${err.message}`); }
 
   state.status = 'listening';
-  log('Listening for tasks...');
+  log('Listening for escrow tasks + x402 API calls...');
   pollTimer = setTimeout(poll, POLL_MS);
   app.listen(PORT, () => log(`Dashboard at http://localhost:${PORT}`));
 }
