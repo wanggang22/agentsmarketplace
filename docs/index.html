@@ -1688,14 +1688,9 @@ function renderAgents(agents) {
     const isOwner = userAccount && ag.owner?.toLowerCase() === userAccount.toLowerCase();
     const ownerBadge = isOwner ? '<span style="font-size:.7rem;font-weight:600;color:var(--success);background:rgba(34,197,94,.1);padding:2px 8px;border-radius:10px;border:1px solid rgba(34,197,94,.2)">Your Agent</span>' : '';
 
-    let useBtn;
-    if (!ag.endpoint || !ag.active) {
-      useBtn = '<button class="btn btn-secondary" disabled>Offline</button>';
-    } else if (isOwner) {
-      useBtn = `<button class="btn btn-success" onclick="tryX402Agent('${escapeHtml(ag.endpoint)}', '${escapeHtml(ag.name)}', true)">Use Free (Owner)</button>`;
-    } else {
-      useBtn = `<button class="btn btn-primary" onclick="tryX402Agent('${escapeHtml(ag.endpoint)}', '${escapeHtml(ag.name)}', false)">Use via x402</button>`;
-    }
+    const useBtn = ag.endpoint && ag.active
+      ? `<button class="btn btn-primary" onclick="tryX402Agent('${escapeHtml(ag.endpoint)}', '${escapeHtml(ag.name)}')">Use via x402</button>`
+      : '<button class="btn btn-secondary" disabled>Offline</button>';
 
     return `
       <div class="agent-card">
@@ -1740,8 +1735,8 @@ function escapeHtml(str) {
 /* =================================================================
    x402 AGENT INTERACTION
    ================================================================= */
-async function tryX402Agent(endpoint, agentName, isOwner) {
-  showToast('Connecting to ' + agentName + (isOwner ? ' (free for owner)' : '') + '...', 'success');
+async function tryX402Agent(endpoint, agentName) {
+  showToast('Connecting to ' + agentName + '...', 'success');
   try {
     // If endpoint doesn't end with /api, try appending it
     const apiUrl = endpoint.endsWith('/api') ? endpoint : endpoint.replace(/\/$/, '') + '/api';
@@ -1749,7 +1744,7 @@ async function tryX402Agent(endpoint, agentName, isOwner) {
     const data = await resp.json();
 
     if (data.endpoints && data.endpoints.length > 0) {
-      showAgentServicesModal(agentName, endpoint, data, isOwner);
+      showAgentServicesModal(agentName, endpoint, data);
     } else {
       showToast(agentName + ' has no x402 services available', 'error');
     }
@@ -1758,12 +1753,12 @@ async function tryX402Agent(endpoint, agentName, isOwner) {
   }
 }
 
-function showAgentServicesModal(agentName, baseUrl, apiData, isOwner) {
+function showAgentServicesModal(agentName, baseUrl, apiData) {
   const servicesHtml = apiData.endpoints.map(ep => {
     const fullUrl = baseUrl.replace(/\/$/, '') + ep.path;
-    const priceLabel = isOwner ? '<span style="color:var(--success);font-weight:700">Free</span>' : `<span style="font-weight:700;color:var(--cyan)">${ep.price}</span>`;
-    const btnLabel = isOwner ? 'Use Free' : 'Try';
-    const btnClass = isOwner ? 'btn btn-success btn-sm' : 'btn btn-primary btn-sm';
+    const priceLabel = `<span style="font-weight:700;color:var(--cyan)">${ep.price}</span>`;
+    const btnLabel = 'Use';
+    const btnClass = 'btn btn-primary btn-sm';
     return `
       <div style="display:flex;justify-content:space-between;align-items:center;padding:12px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:8px">
         <div>
