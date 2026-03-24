@@ -475,6 +475,7 @@ const X402_PRICES = {
   '/api/portfolio': { amount: '10000',  display: '$0.01',  desc: 'Portfolio Analysis — wallet holdings across 20+ chains' },
   '/api/security':  { amount: '20000',  display: '$0.02',  desc: 'Security Scan — token + DApp risk detection' },
   '/api/gas':       { amount: '1000',   display: '$0.001', desc: 'Gas Estimation — current gas prices on any chain' },
+  '/api/ask':       { amount: '30000',  display: '$0.03',  desc: 'Ask Anything — AI auto-selects tools, combines all capabilities into one answer' },
 };
 
 function buildPaymentRequirements(pricePath) {
@@ -862,6 +863,108 @@ app.get('/api/gas', x402Guard('/api/gas'), async (req, res) => {
     agent: state.agentName, type: 'gas-estimation', chain,
     gas: gasData,
     poweredBy: 'OKX OnchainOS (Gateway)',
+    timestamp: new Date().toISOString(),
+  };
+  if (req.x402Settlement) { response.payment = req.x402Settlement; res.setHeader('PAYMENT-RESPONSE', Buffer.from(JSON.stringify(req.x402Settlement)).toString('base64')); }
+  res.json(response);
+});
+
+// /api/ask — Unified AI Agent: auto-selects tools, combines all capabilities
+app.get('/api/ask', x402Guard('/api/ask'), async (req, res) => {
+  const question = req.query.q || '';
+  if (!question) return res.status(400).json({ error: 'q parameter required' });
+  log(`/api/ask: "${question}"`);
+
+  // Step 1: Let Claude decide which tools to use
+  const planResponse = await askClaude(
+    `You are an AI agent orchestrator. Given a user question, decide which data tools to call.
+Available tools (return as JSON array of tool names):
+- "price" — get token price (needs: token name)
+- "tokenInfo" — get market cap, volume, 24h change (needs: token name)
+- "kline" — get 7-day price chart (needs: token name)
+- "hotTokens" — get trending tokens
+- "signals" — get smart money/whale buy signals (needs: chain, default "1")
+- "leaderboard" — get top traders ranked by PnL
+- "memeTokens" — scan new meme token launches (needs: chain, default "501")
+- "security" — scan token contract for risks (needs: chain + address)
+- "portfolio" — analyze wallet holdings (needs: wallet address)
+- "swapQuote" — get DEX swap price quote
+- "gasPrice" — get current gas prices (needs: chain)
+
+Return ONLY a JSON object like: {"tools":["price","signals","security"],"token":"PEPE","chain":"1","address":""}
+No explanation, just JSON.`,
+    question
+  );
+
+  // Parse Claude's tool selection
+  let plan = { tools: ['price'], token: 'BTC', chain: '1', address: '' };
+  try {
+    const jsonMatch = planResponse.match(/\{[\s\S]*\}/);
+    if (jsonMatch) plan = JSON.parse(jsonMatch[0]);
+  } catch { /* use default */ }
+
+  log(`  Plan: ${JSON.stringify(plan)}`);
+
+  // Step 2: Execute selected tools in parallel
+  const toolResults = {};
+  const tasks = [];
+
+  if (plan.tools.includes('price') && plan.token) {
+    tasks.push(getTokenPrice(plan.token).then(r => toolResults.price = r));
+  }
+  if (plan.tools.includes('tokenInfo') && plan.token) {
+    tasks.push(getTokenInfo(plan.token).then(r => toolResults.tokenInfo = r));
+  }
+  if (plan.tools.includes('kline') && plan.token) {
+    tasks.push(getKline(plan.token, '1D', 7).then(r => toolResults.kline = r));
+  }
+  if (plan.tools.includes('hotTokens')) {
+    tasks.push(getHotTokens(plan.chain || '1').then(r => toolResults.hotTokens = r));
+  }
+  if (plan.tools.includes('signals')) {
+    tasks.push(getSignals(plan.chain || '1', '1').then(r => toolResults.signals = r));
+  }
+  if (plan.tools.includes('leaderboard')) {
+    tasks.push(getLeaderboard(plan.chain || '1', '4', '1').then(r => toolResults.leaderboard = r));
+  }
+  if (plan.tools.includes('memeTokens')) {
+    tasks.push(getMemePumpTokens(plan.chain || '501', 'NEW').then(r => toolResults.memeTokens = r));
+  }
+  if (plan.tools.includes('security') && (plan.address || plan.token)) {
+    const token = await resolveToken(plan.token || '');
+    tasks.push(scanTokenSecurity(token.chain, token.address).then(r => toolResults.security = r));
+  }
+  if (plan.tools.includes('portfolio') && plan.address) {
+    tasks.push(getPortfolioValue(plan.address).then(r => toolResults.portfolio = r));
+  }
+  if (plan.tools.includes('swapQuote')) {
+    tasks.push(getSwapQuote(plan.chain || '196', '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee', USDC_ADDRESS, '1000000000000000000').then(r => toolResults.swapQuote = r));
+  }
+  if (plan.tools.includes('gasPrice')) {
+    tasks.push(getGasPrice(plan.chain || '196').then(r => toolResults.gasPrice = r));
+  }
+
+  await Promise.all(tasks);
+
+  log(`  Tools executed: ${Object.keys(toolResults).join(', ')}`);
+
+  // Step 3: Claude synthesizes everything into one answer
+  const dataContext = Object.entries(toolResults)
+    .filter(([, v]) => v !== null)
+    .map(([k, v]) => `[${k}]: ${JSON.stringify(v).slice(0, 500)}`)
+    .join('\n\n');
+
+  const answer = await askClaude(
+    `You are a full-stack AI agent on X Layer with access to real-time blockchain data from OKX OnchainOS. You have just gathered data from multiple tools to answer the user's question. Synthesize all the data into one clear, comprehensive answer. Be specific with numbers. Use bullet points for clarity. IMPORTANT: Reply in the same language as the user's question.`,
+    `User question: "${question}"\n\nData gathered:\n${dataContext || 'No data available'}\n\nGive a comprehensive answer based on all available data.`
+  );
+
+  const response = {
+    agent: state.agentName, type: 'ask', question,
+    toolsUsed: Object.keys(toolResults),
+    data: toolResults,
+    answer,
+    poweredBy: { orchestration: 'Claude AI', data: 'OKX OnchainOS (' + Object.keys(toolResults).join(', ') + ')' },
     timestamp: new Date().toISOString(),
   };
   if (req.x402Settlement) { response.payment = req.x402Settlement; res.setHeader('PAYMENT-RESPONSE', Buffer.from(JSON.stringify(req.x402Settlement)).toString('base64')); }
