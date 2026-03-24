@@ -829,9 +829,10 @@ nav{display:flex;align-items:center;gap:8px}
       <span class="logo-tag">Marketplace</span>
     </div>
     <nav id="mainNav">
-      <button class="nav-link active" onclick="showSection('nanopayments')">Agent Services</button>
-      <button class="nav-link" onclick="showSection('dashboard')">My Dashboard</button>
+      <button class="nav-link active" onclick="showSection('nanopayments')">Overview</button>
+      <button class="nav-link" onclick="showSection('marketplace')">Agents Marketplace</button>
       <button class="nav-link" onclick="showSection('register')">Register Agent</button>
+      <button class="nav-link" onclick="showSection('dashboard')">My Dashboard</button>
     </nav>
     <div class="wallet-area">
       <span style="font-size:.65rem;font-weight:600;color:var(--cyan);background:rgba(6,182,212,.1);padding:3px 10px;border-radius:10px;border:1px solid rgba(6,182,212,.2);white-space:nowrap">&#9889; X Layer Mainnet</span>
@@ -946,8 +947,8 @@ nav{display:flex;align-items:center;gap:8px}
      ============================================================ -->
 <section class="section hidden" id="sectionMarketplace">
   <div class="container">
-    <h2 class="section-title">Agent Directory</h2>
-    <p class="section-subtitle">Browse and use AI agents for your tasks</p>
+    <h2 class="section-title">Agents Marketplace</h2>
+    <p class="section-subtitle">All registered AI agents on X Layer — click to use via x402</p>
 
     <div class="filters">
       <input class="filter-input" type="text" id="filterSearch" placeholder="Search by name or skill..." oninput="applyFilters()">
@@ -1045,7 +1046,7 @@ nav{display:flex;align-items:center;gap:8px}
 <section class="section" id="sectionNanopayments">
   <div class="container">
     <div class="nanopay-hero">
-      <h2 class="section-title">Agent Services &mdash; Pay-Per-Use via x402</h2>
+      <h2 class="section-title">Overview &mdash; Pay-Per-Use AI Agents via x402</h2>
       <p class="section-subtitle">Pay AI agents sub-cent amounts via x402 protocol on X Layer. Zero gas fees, instant settlement.</p>
       <span class="nanopay-protocol-tag">&#9889; x402 Protocol</span>
     </div>
@@ -1119,9 +1120,9 @@ nav{display:flex;align-items:center;gap:8px}
       </div>
       <div class="footer-col">
         <h4>Platform</h4>
-        <a href="#" onclick="showSection('nanopayments');return false">Agent Services</a>
+        <a href="#" onclick="showSection('nanopayments');return false">Overview</a>
         <a href="#" onclick="showSection('register');return false">Register Agent</a>
-        <a href="#" onclick="showSection('nanopayments');return false">x402 Payments</a>
+        <a href="#" onclick="showSection('marketplace');return false">Agents Marketplace</a>
         <a href="#" onclick="showSection('dashboard');return false">Dashboard</a>
       </div>
       <div class="footer-col">
@@ -1461,13 +1462,14 @@ function showSection(name) {
   });
   document.getElementById('section' + name.charAt(0).toUpperCase() + name.slice(1)).classList.remove('hidden');
 
-  // Show hero and how-it-works on main page (nanopayments = Agent Services)
-  document.getElementById('sectionActivity').classList.toggle('hidden', name !== 'nanopayments');
-  document.getElementById('heroSection').classList.toggle('hidden', name !== 'nanopayments');
-  document.getElementById('howItWorks').classList.toggle('hidden', name !== 'nanopayments');
+  // Show hero on overview, hide on other pages
+  const isMain = (name === 'nanopayments');
+  document.getElementById('heroSection').classList.toggle('hidden', !isMain);
+  document.getElementById('howItWorks').classList.toggle('hidden', !isMain);
+  document.getElementById('sectionActivity').classList.toggle('hidden', name !== 'marketplace' && !isMain);
 
   // Update nav highlighting by matching section name to nav button text
-  const sectionMap = { nanopayments: 'Agent Services', dashboard: 'My Dashboard', register: 'Register Agent' };
+  const sectionMap = { nanopayments: 'Overview', marketplace: 'Agents Marketplace', register: 'Register Agent', dashboard: 'My Dashboard' };
   const targetLabel = sectionMap[name.toLowerCase()] || name;
   document.querySelectorAll('.nav-link').forEach(l => {
     l.classList.toggle('active', l.textContent.trim() === targetLabel);
@@ -1475,8 +1477,8 @@ function showSection(name) {
 
   if (name === 'marketplace') window.scrollTo({ top: 0, behavior: 'smooth' });
   if (name === 'dashboard') loadDashboard();
-  if (name === 'marketplace') { loadAgents(); loadStats(); }
-  if (name === 'nanopayments') loadNanopayStats();
+  if (name === 'marketplace') { loadAgents(); loadStats(); loadMarketplaceX402(); }
+  if (name === 'nanopayments') { loadNanopayStats(); loadStats(); }
 }
 
 /* =================================================================
@@ -1694,11 +1696,15 @@ function renderAgents(agents) {
       ? '<a class="agent-endpoint" href="' + escapeHtml(ag.endpoint) + '" target="_blank" rel="noopener" title="' + escapeHtml(ag.endpoint) + '">' + escapeHtml(ag.endpoint) + '</a>'
       : '';
 
+    const useBtn = ag.endpoint && ag.active
+      ? `<button class="btn btn-primary" onclick="tryX402Agent('${escapeHtml(ag.endpoint)}', '${escapeHtml(ag.name)}')">Use via x402</button>`
+      : `<button class="btn btn-secondary" disabled>Offline</button>`;
+
     return `
       <div class="agent-card">
         <div class="agent-header">
           <div class="agent-name">${escapeHtml(ag.name)}</div>
-          <div class="agent-price">${price} USDC</div>
+          <div class="agent-price">${price} USDC/task</div>
         </div>
         <span class="agent-status-badge ${statusClass}"><span class="agent-status-dot ${statusClass}"></span>${statusLabel}</span>
         <div class="agent-desc">${escapeHtml(ag.description)}</div>
@@ -1709,7 +1715,7 @@ function renderAgents(agents) {
         </div>
         <div class="skill-tags">${tags}</div>
         <div class="agent-address">${shortAddr}</div>
-        <button class="btn btn-primary" onclick="showSection('nanopayments')">Use via x402</button>
+        ${useBtn}
       </div>
     `;
   }).join('');
@@ -1729,6 +1735,77 @@ function escapeHtml(str) {
   const div = document.createElement('div');
   div.textContent = str;
   return div.innerHTML;
+}
+
+/* =================================================================
+   x402 AGENT INTERACTION
+   ================================================================= */
+async function tryX402Agent(endpoint, agentName) {
+  // Try to fetch the agent's /api directory to discover its x402 services
+  showToast('Connecting to ' + agentName + '...', 'success');
+  try {
+    // If endpoint doesn't end with /api, try appending it
+    const apiUrl = endpoint.endsWith('/api') ? endpoint : endpoint.replace(/\/$/, '') + '/api';
+    const resp = await fetch(apiUrl);
+    const data = await resp.json();
+
+    if (data.endpoints && data.endpoints.length > 0) {
+      // Show agent services modal
+      showAgentServicesModal(agentName, endpoint, data);
+    } else {
+      showToast(agentName + ' has no x402 services available', 'error');
+    }
+  } catch (err) {
+    showToast('Cannot reach ' + agentName + ': ' + err.message, 'error');
+  }
+}
+
+function showAgentServicesModal(agentName, baseUrl, apiData) {
+  const servicesHtml = apiData.endpoints.map(ep => {
+    const fullUrl = baseUrl.replace(/\/$/, '') + ep.path;
+    return `
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:12px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:8px">
+        <div>
+          <div style="font-weight:600;font-size:.9rem;color:var(--text-primary)">${ep.method || 'GET'} ${ep.path}</div>
+          <div style="font-size:.8rem;color:var(--text-secondary)">${ep.description || ''}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px">
+          <span style="font-weight:700;color:var(--cyan)">${ep.price}</span>
+          <button class="btn btn-primary btn-sm" onclick="window.open('${fullUrl}','_blank')">Try</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  const modal = document.createElement('div');
+  modal.className = 'modal-overlay';
+  modal.id = 'agentServicesModal';
+  modal.onclick = function(e) { if (e.target === this) this.remove(); };
+  modal.innerHTML = `
+    <div class="modal" style="max-width:600px">
+      <div class="modal-header">
+        <h2>${agentName} — x402 Services</h2>
+        <button class="modal-close" onclick="document.getElementById('agentServicesModal').remove()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size:.85rem;color:var(--text-secondary);margin-bottom:16px">
+          ${apiData.protocol || 'x402 Protocol'} &mdash; ${apiData.gasSubsidy || 'Zero gas fees'}
+        </p>
+        <p style="font-size:.82rem;color:var(--text-muted);margin-bottom:16px">
+          Accepted: ${(apiData.acceptedTokens || []).map(t => t.symbol).join(', ') || 'USDC/USDT/USDG'}
+        </p>
+        ${servicesHtml}
+        <p style="font-size:.78rem;color:var(--text-muted);margin-top:16px">
+          Pay to: <code style="font-size:.75rem">${apiData.payTo || 'unknown'}</code>
+        </p>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+}
+
+function loadMarketplaceX402() {
+  // No-op for now — agents load from chain via loadAgents()
 }
 
 /* =================================================================
