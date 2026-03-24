@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * register-agents.mjs — Register demo AI agents on XLayerAgent Marketplace
+ * register-agents.mjs — Register demo AI agents on AgentsMarketplace Marketplace
  *
  * Usage:  PRIVATE_KEY=0x... node scripts/register-agents.mjs
  */
@@ -34,14 +34,14 @@ const registryAbi = parseAbi([
 ]);
 
 const DEMO_AGENTS = [
-  { name: 'DataAnalyst-AI', description: 'Data analysis and visualization', endpoint: 'https://api.xlayeragent.demo/data-analyst', price: 500_000n, skills: ['data', 'analytics', 'visualization'] },
-  { name: 'TranslateBot', description: 'Multi-language translation service', endpoint: 'https://api.xlayeragent.demo/translate', price: 100_000n, skills: ['translation', 'nlp', 'language'] },
-  { name: 'CodeReviewer', description: 'Smart contract code review', endpoint: 'https://api.xlayeragent.demo/code-review', price: 1_000_000n, skills: ['solidity', 'audit', 'security'] },
+  { name: 'DataAnalyst-AI', description: 'Data analysis and visualization', endpoint: 'https://api.agentsmarketplace.app/data-analyst', price: 500_000n, skills: ['data', 'analytics', 'visualization'] },
+  { name: 'TranslateBot', description: 'Multi-language translation service', endpoint: 'https://api.agentsmarketplace.app/translate', price: 100_000n, skills: ['translation', 'nlp', 'language'] },
+  { name: 'CodeReviewer', description: 'Smart contract code review', endpoint: 'https://api.agentsmarketplace.app/code-review', price: 1_000_000n, skills: ['solidity', 'audit', 'security'] },
 ];
 
 async function main() {
   console.log('='.repeat(60));
-  console.log('  XLayerAgent Marketplace — Register Demo Agents');
+  console.log('  AgentsMarketplace Marketplace — Register Demo Agents');
   console.log('='.repeat(60));
 
   const account = privateKeyToAccount(PRIVATE_KEY);

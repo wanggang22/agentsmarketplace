@@ -7,7 +7,7 @@ import "../src/TaskManager.sol";
 import "../src/ReputationEngine.sol";
 import "../src/NanopayDemo.sol";
 
-/// @notice Deploy all XLayerAgent contracts to X Layer and wire them together.
+/// @notice Deploy all AgentsMarketplace contracts to X Layer and wire them together.
 ///
 /// Usage:
 ///   DEPLOYER_PK=0x... forge script script/Deploy.s.sol \

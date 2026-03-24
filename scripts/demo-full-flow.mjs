@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * demo-full-flow.mjs — End-to-end XLayerAgent Marketplace demo
+ * demo-full-flow.mjs — End-to-end AgentsMarketplace Marketplace demo
  *
  * Usage:
  *   AGENT_PRIVATE_KEY=0x... CLIENT_PRIVATE_KEY=0x... node scripts/demo-full-flow.mjs
@@ -78,7 +78,7 @@ async function sendTx(walletClient, publicClient, params, label) {
 
 async function main() {
   console.log('\n' + '#'.repeat(60));
-  console.log('#   XLayerAgent Marketplace — Full Demo Flow');
+  console.log('#   AgentsMarketplace Marketplace — Full Demo Flow');
   console.log('#'.repeat(60));
 
   const agentAccount = privateKeyToAccount(AGENT_PK);
@@ -105,7 +105,7 @@ async function main() {
   } else {
     await sendTx(agentWal, pub, {
       address: AGENT_REGISTRY, abi: registryAbi, functionName: 'registerAgent',
-      args: ['CodeReviewer-AI', 'Autonomous smart contract security auditor', 'https://xlayeragent.demo/api/code-review', 500_000n, ['solidity', 'audit', 'security', 'ai-agent']],
+      args: ['CodeReviewer-AI', 'Autonomous smart contract security auditor', 'https://agentsmarketplace.app/api/code-review', 500_000n, ['solidity', 'audit', 'security', 'ai-agent']],
     }, 'registerAgent("CodeReviewer-AI")');
   }
 
@@ -121,7 +121,7 @@ async function main() {
   const taskCountBefore = await pub.readContract({ address: TASK_MANAGER, abi: taskManagerAbi, functionName: 'getTaskCount' });
   await sendTx(clientWal, pub, {
     address: TASK_MANAGER, abi: taskManagerAbi, functionName: 'createTask',
-    args: [agentAccount.address, 'Audit the XLayerAgent contracts for reentrancy, access control, and economic attack vectors', TASK_PAYMENT],
+    args: [agentAccount.address, 'Audit the AgentsMarketplace contracts for reentrancy, access control, and economic attack vectors', TASK_PAYMENT],
   }, 'createTask(0.5 USDC)');
   const taskId = taskCountBefore;
 

@@ -1,11 +1,11 @@
 // ============================================================================
-// Example: Translation Agent for XLayerAgent
+// Example: Translation Agent for AgentsMarketplace
 //
 // Usage:
 //   PRIVATE_KEY=0x... node example-agent.mjs
 // ============================================================================
 
-import { XLayerAgent } from './xlayeragent-sdk.mjs';
+import { AgentsMarketplace } from './xlayeragent-sdk.mjs';
 
 const PRIVATE_KEY = process.env.PRIVATE_KEY;
 if (!PRIVATE_KEY) {
@@ -13,7 +13,7 @@ if (!PRIVATE_KEY) {
   process.exit(1);
 }
 
-const agent = new XLayerAgent({ privateKey: PRIVATE_KEY });
+const agent = new AgentsMarketplace({ privateKey: PRIVATE_KEY });
 
 console.log(`Wallet address: ${agent.address}`);
 
@@ -56,7 +56,7 @@ async function main() {
   try {
     const alreadyRegistered = await agent.isRegistered();
     if (!alreadyRegistered) {
-      console.log('\nRegistering agent on XLayerAgent...');
+      console.log('\nRegistering agent on AgentsMarketplace...');
       await agent.register({
         name: 'TranslateBot',
         description: 'Fast, affordable text translation powered by AI. Supports 50+ languages.',

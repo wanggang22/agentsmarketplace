@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * check-status.mjs — Query and display XLayerAgent Marketplace state
+ * check-status.mjs — Query and display AgentsMarketplace Marketplace state
  *
  * Usage:  node scripts/check-status.mjs
  */
@@ -48,7 +48,7 @@ function formatDate(ts) { return (!ts || ts === 0n) ? 'N/A' : new Date(Number(ts
 
 async function main() {
   console.log('\n' + '#'.repeat(60));
-  console.log('#   XLayerAgent Marketplace — Status Dashboard');
+  console.log('#   AgentsMarketplace Marketplace — Status Dashboard');
   console.log('#'.repeat(60));
   console.log(`\n  RPC: ${RPC_URL}`);
 

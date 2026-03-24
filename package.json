@@ -1,5 +1,5 @@
 {
-  "name": "xlayeragent-marketplace",
+  "name": "agentsmarketplace",
   "version": "1.0.0",
   "description": "AI Agent Service Marketplace on X Layer",
   "main": "index.js",

@@ -1,10 +1,10 @@
 // ============================================================================
-// XLayerAgent SDK
-// Turn any script into an XLayerAgent marketplace agent in minutes.
+// AgentsMarketplace SDK
+// Turn any script into an AgentsMarketplace marketplace agent in minutes.
 //
 // Usage:
-//   import { XLayerAgent } from './xlayeragent-sdk.mjs';
-//   const agent = new XLayerAgent({ privateKey: '0x...' });
+//   import { AgentsMarketplace } from './xlayeragent-sdk.mjs';
+//   const agent = new AgentsMarketplace({ privateKey: '0x...' });
 //   await agent.register({ name: 'MyAgent', ... });
 //   agent.onTask(async (task) => { return 'result'; });
 //   await agent.start();
@@ -163,13 +163,13 @@ const TaskStateName = Object.freeze(
 );
 
 // ---------------------------------------------------------------------------
-// XLayerAgent
+// AgentsMarketplace
 // ---------------------------------------------------------------------------
 
-export class XLayerAgent extends EventEmitter {
+export class AgentsMarketplace extends EventEmitter {
   constructor({ privateKey, rpcUrl, addresses, pollInterval } = {}) {
     super();
-    if (!privateKey) throw new Error('XLayerAgent: privateKey is required');
+    if (!privateKey) throw new Error('AgentsMarketplace: privateKey is required');
 
     this._addresses = { ...DEFAULT_ADDRESSES, ...addresses };
     this._account = privateKeyToAccount(privateKey);
@@ -226,7 +226,7 @@ export class XLayerAgent extends EventEmitter {
   static get TaskStateName() { return TaskStateName; }
 
   async register({ name, description, endpoint, pricePerTask, skills = [] }) {
-    if (!name || !endpoint) throw new Error('XLayerAgent: name and endpoint are required');
+    if (!name || !endpoint) throw new Error('AgentsMarketplace: name and endpoint are required');
     const priceWei = parseUnits(String(pricePerTask || 0), 6);
     const hash = await this._withRetry(() =>
       this._registry.write.registerAgent([name, description || '', endpoint, priceWei, skills])
@@ -273,13 +273,13 @@ export class XLayerAgent extends EventEmitter {
   }
 
   onTask(handler) {
-    if (typeof handler !== 'function') throw new Error('XLayerAgent: onTask handler must be a function');
+    if (typeof handler !== 'function') throw new Error('AgentsMarketplace: onTask handler must be a function');
     this._taskHandler = handler;
   }
 
   async start() {
     if (this._running) { this._log('Already running'); return; }
-    if (!this._taskHandler) throw new Error('XLayerAgent: call onTask(handler) before start()');
+    if (!this._taskHandler) throw new Error('AgentsMarketplace: call onTask(handler) before start()');
     this._running = true;
     this._log(`Listening for tasks (poll every ${this._pollInterval}ms)...`);
     await this._poll();
@@ -416,7 +416,7 @@ export class XLayerAgent extends EventEmitter {
     return msg.includes('revert') || msg.includes('execution reverted') || msg.includes('CALL_EXCEPTION') || err?.code === 'CALL_EXCEPTION';
   }
 
-  _log(msg) { const ts = new Date().toISOString().slice(11, 19); console.log(`[XLayerAgent ${ts}] ${msg}`); }
+  _log(msg) { const ts = new Date().toISOString().slice(11, 19); console.log(`[AgentsMarketplace ${ts}] ${msg}`); }
   _sleep(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
 }
 
