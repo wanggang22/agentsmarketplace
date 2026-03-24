@@ -15,6 +15,7 @@
     "deploy": "forge script script/Deploy.s.sol --rpc-url https://rpc.xlayer.tech --broadcast --legacy"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.80.0",
     "express": "^5.2.1",
     "viem": "^2.47.6"
   }

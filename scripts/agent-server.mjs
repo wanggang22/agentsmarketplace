@@ -25,6 +25,10 @@ import {
 import { privateKeyToAccount } from 'viem/accounts';
 import express from 'express';
 import crypto from 'crypto';
+import Anthropic from '@anthropic-ai/sdk';
+
+const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || '';
+const claude = ANTHROPIC_API_KEY ? new Anthropic({ apiKey: ANTHROPIC_API_KEY }) : null;
 
 const PORT    = Number(process.env.PORT) || 3080;
 const POLL_MS = Number(process.env.POLL_MS) || 5000;
@@ -122,7 +126,68 @@ async function okxRequest(method, path, body) {
 
 const hasOkxKeys = OKX_API_KEY && OKX_SECRET_KEY && OKX_PASSPHRASE;
 
-// ── AI result generators ──────────────────────────────────────────────────────
+// ── OnchainOS Market API ──────────────────────────────────────────────────────
+
+// Well-known token addresses for quick lookup
+const TOKEN_MAP = {
+  'btc':  { chain: '1',   address: '0x2260fac5e5542a773aa44fbcfedf7c193bc2c599', name: 'Bitcoin' },
+  'eth':  { chain: '1',   address: '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee', name: 'Ethereum' },
+  'okb':  { chain: '196', address: '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee', name: 'OKB' },
+  'usdc': { chain: '196', address: USDC_ADDRESS.toLowerCase(), name: 'USDC' },
+  'usdt': { chain: '196', address: USDT_ADDRESS.toLowerCase(), name: 'USDT' },
+};
+
+async function getTokenPrice(query) {
+  // Try to match a known token
+  const q = query.toLowerCase().trim();
+  const token = TOKEN_MAP[q] || TOKEN_MAP['btc']; // default to BTC
+
+  try {
+    const result = await okxRequest('POST', '/api/v6/dex/market/price', [
+      { chainIndex: token.chain, tokenContractAddress: token.address },
+    ]);
+    if (result.code === '0' && result.data?.[0]) {
+      return { price: result.data[0].price, token: token.name, chain: token.chain, timestamp: result.data[0].time };
+    }
+  } catch (err) {
+    log(`Market API error: ${err.message}`);
+  }
+  return null;
+}
+
+async function getSwapQuote(fromToken, toToken, amount) {
+  try {
+    const result = await okxRequest('GET',
+      `/api/v5/dex/aggregator/quote?chainId=196&fromTokenAddress=${fromToken}&toTokenAddress=${toToken}&amount=${amount}`
+    );
+    if (result.code === '0' && result.data?.[0]) {
+      return result.data[0];
+    }
+  } catch (err) {
+    log(`DEX API error: ${err.message}`);
+  }
+  return null;
+}
+
+// ── Claude AI ─────────────────────────────────────────────────────────────────
+
+async function askClaude(systemPrompt, userMessage) {
+  if (!claude) return '(Claude API not configured — set ANTHROPIC_API_KEY)';
+  try {
+    const msg = await claude.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 1024,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userMessage }],
+    });
+    return msg.content[0]?.text || '';
+  } catch (err) {
+    log(`Claude API error: ${err.message}`);
+    return `(AI error: ${err.message})`;
+  }
+}
+
+// ── AI result generators (for TaskManager escrow tasks) ───────────────────────
 
 function classifyTask(d) {
   const l = d.toLowerCase();
@@ -351,17 +416,28 @@ function x402Guard(pricePath) {
 
 // ── API Endpoints ─────────────────────────────────────────────────────────────
 
-app.get('/api/analyze', x402Guard('/api/analyze'), (req, res) => {
-  const query = req.query.q || 'general market data';
+// /api/analyze — Real market data from OnchainOS + Claude AI analysis
+app.get('/api/analyze', x402Guard('/api/analyze'), async (req, res) => {
+  const query = req.query.q || 'BTC';
   log(`/api/analyze: "${query}"`);
+
+  // 1. Fetch real price from OnchainOS Market API
+  const priceData = await getTokenPrice(query);
+  const priceInfo = priceData
+    ? `${priceData.token} current price: $${Number(priceData.price).toFixed(4)} (chain ${priceData.chain})`
+    : `Could not fetch live price for "${query}"`;
+
+  // 2. Claude AI analysis with real market data
+  const analysis = await askClaude(
+    'You are a crypto market analyst AI agent on X Layer. Give concise, data-driven analysis in 3-5 bullet points. Be specific with numbers when available.',
+    `Analyze this token/market: "${query}"\n\nLive data: ${priceInfo}\n\nProvide: price assessment, trend outlook, key risks, and recommendation.`
+  );
+
   const response = {
     agent: state.agentName, type: 'data-analysis', query,
-    result: {
-      summary: `Analysis of "${query}" completed.`,
-      dataPoints: Math.floor(Math.random() * 5000) + 1000,
-      trend: 'upward', confidence: 0.92,
-      insights: ['Primary metric shows 12% growth.', 'Seasonal pattern detected with Q4 peak.'],
-    },
+    marketData: priceData || { note: 'price unavailable' },
+    analysis,
+    poweredBy: { data: 'OKX OnchainOS Market API', ai: 'Claude (Anthropic)' },
     timestamp: new Date().toISOString(),
   };
   if (req.x402Settlement) {
@@ -371,15 +447,24 @@ app.get('/api/analyze', x402Guard('/api/analyze'), (req, res) => {
   res.json(response);
 });
 
-app.get('/api/translate', x402Guard('/api/translate'), (req, res) => {
+// /api/translate — Real AI translation via Claude
+app.get('/api/translate', x402Guard('/api/translate'), async (req, res) => {
   const text = req.query.text || 'Hello world';
   const to = req.query.to || 'es';
-  log(`/api/translate: "${text}" → ${to}`);
-  const translations = { es: 'Hola mundo', zh: '你好世界', ja: 'こんにちは世界', ko: '안녕하세요 세계', fr: 'Bonjour le monde' };
+  const langMap = { es: 'Spanish', zh: 'Chinese', ja: 'Japanese', ko: 'Korean', fr: 'French', de: 'German', pt: 'Portuguese', ru: 'Russian', ar: 'Arabic' };
+  const targetLang = langMap[to] || to;
+  log(`/api/translate: "${text}" → ${targetLang}`);
+
+  const result = await askClaude(
+    'You are a professional translator AI agent. Return ONLY the translated text, nothing else. No quotes, no explanation.',
+    `Translate the following text to ${targetLang}:\n\n${text}`
+  );
+
   const response = {
     agent: state.agentName, type: 'translation',
-    source: text, target: to, result: translations[to] || `[${to}] ${text}`,
-    confidence: 0.96, timestamp: new Date().toISOString(),
+    source: text, targetLanguage: targetLang, result,
+    poweredBy: 'Claude (Anthropic)',
+    timestamp: new Date().toISOString(),
   };
   if (req.x402Settlement) {
     response.payment = req.x402Settlement;
@@ -388,20 +473,26 @@ app.get('/api/translate', x402Guard('/api/translate'), (req, res) => {
   res.json(response);
 });
 
-app.get('/api/audit', x402Guard('/api/audit'), (req, res) => {
-  const contract = req.query.contract || '0x0000000000000000000000000000000000000000';
-  log(`/api/audit: ${contract}`);
+// /api/audit — Real AI smart contract audit via Claude
+app.get('/api/audit', x402Guard('/api/audit'), async (req, res) => {
+  const contract = req.query.contract || '';
+  const code = req.query.code || '';
+  log(`/api/audit: ${contract || 'inline code'}`);
+
+  const auditInput = code
+    ? `Audit this Solidity code:\n\n${code}`
+    : `Audit the smart contract at address ${contract} on X Layer (chain 196). Based on common patterns, provide a security assessment.`;
+
+  const result = await askClaude(
+    'You are a smart contract security auditor AI agent. Provide a structured audit report with: 1) Overall Risk Level (CRITICAL/HIGH/MEDIUM/LOW), 2) Findings with severity, 3) Gas optimizations, 4) Recommendations. Be concise but thorough.',
+    auditInput
+  );
+
   const response = {
-    agent: state.agentName, type: 'security-audit', contract,
-    result: {
-      overallRisk: 'LOW',
-      findings: [
-        { severity: 'INFO', title: 'Floating pragma', recommendation: 'Pin solidity version.' },
-        { severity: 'LOW', title: 'Missing event on state change', recommendation: 'Add events.' },
-      ],
-      gasOptimizations: ['Cache storage reads in loops.'],
-      conclusion: 'No critical issues found.',
-    },
+    agent: state.agentName, type: 'security-audit',
+    contract: contract || '(inline code)',
+    audit: result,
+    poweredBy: 'Claude (Anthropic)',
     timestamp: new Date().toISOString(),
   };
   if (req.x402Settlement) {
@@ -475,7 +566,9 @@ async function start() {
   console.log(`  Address:     ${account.address}`);
   console.log(`  RPC:         ${RPC_URL}`);
   console.log(`  Chain:       196 (X Layer)`);
-  console.log(`  x402:        ${hasOkxKeys ? 'OKX Facilitator (zero gas)' : 'NOT CONFIGURED — set OKX_API_KEY/OKX_SECRET_KEY/OKX_PASSPHRASE'}`);
+  console.log(`  x402:        ${hasOkxKeys ? 'OKX Facilitator (zero gas)' : 'NOT CONFIGURED'}`);
+  console.log(`  AI:          ${claude ? 'Claude (Anthropic)' : 'NOT CONFIGURED — set ANTHROPIC_API_KEY'}`);
+  console.log(`  Market Data: ${hasOkxKeys ? 'OKX OnchainOS Market API' : 'NOT CONFIGURED'}`);
   console.log(`  Dashboard:   http://localhost:${PORT}\n`);
 
   try {
