@@ -628,7 +628,7 @@ app.get('/api/analyze', x402Guard('/api/analyze'), async (req, res) => {
   }
 
   const analysis = await askClaude(
-    'You are a crypto market analyst AI agent powered by OKX OnchainOS data. Give concise, data-driven analysis. Use the real-time data provided. Format with bullet points.',
+    'You are a crypto market analyst AI agent powered by OKX OnchainOS data. Give concise, data-driven analysis. Use the real-time data provided. Format with bullet points. IMPORTANT: Always reply in the same language as the user query. If the user writes in Chinese, reply in Chinese. If in English, reply in English.',
     `Analyze: "${query}"\n\nReal-time data from OKX OnchainOS:\n${dataContext.join('\n') || 'No data available'}\n\nProvide: 1) Price assessment 2) Trend (with 7d chart context) 3) Market sentiment 4) Key risks 5) Recommendation`
   );
 
@@ -699,7 +699,7 @@ app.get('/api/audit', x402Guard('/api/audit'), async (req, res) => {
     : `Audit contract ${contract} on chain ${chain}.\n\n${scanContext}\n\nProvide a security assessment.`;
 
   const audit = await askClaude(
-    'You are a smart contract security auditor AI agent powered by OKX OnchainOS security scanning. Provide: 1) Overall Risk (CRITICAL/HIGH/MEDIUM/LOW), 2) Findings with severity, 3) Gas optimizations, 4) Recommendations. Use the security scan data when available.',
+    'You are a smart contract security auditor AI agent powered by OKX OnchainOS security scanning. Provide: 1) Overall Risk (CRITICAL/HIGH/MEDIUM/LOW), 2) Findings with severity, 3) Gas optimizations, 4) Recommendations. Use the security scan data when available. IMPORTANT: Always reply in the same language as the user query.',
     auditInput
   );
 
@@ -731,7 +731,7 @@ app.get('/api/signals', x402Guard('/api/signals'), async (req, res) => {
   ]);
 
   const analysis = await askClaude(
-    'You are a DeFi signal analyst. Analyze the smart money/whale movements and provide actionable insights in 3-5 bullet points.',
+    'You are a DeFi signal analyst. Analyze the smart money/whale movements and provide actionable insights in 3-5 bullet points. Reply in the same language as the user query.',
     `Signal type: ${type}\nChain: ${chain}\n\nRecent signals: ${JSON.stringify(signals?.slice(0,5) || [])}\n\nTop traders (30d): ${JSON.stringify(leaderboard?.slice(0,5) || [])}\n\nAnalyze: what are smart money doing? Any patterns?`
   );
 
@@ -755,7 +755,7 @@ app.get('/api/trenches', x402Guard('/api/trenches'), async (req, res) => {
   const tokens = await getMemePumpTokens(chain, stage);
 
   const analysis = await askClaude(
-    'You are a meme coin analyst. Evaluate new meme tokens for potential and risks. Be direct about rug pull risks.',
+    'You are a meme coin analyst. Evaluate new meme tokens for potential and risks. Be direct about rug pull risks. Reply in the same language as the user query.',
     `New meme tokens (${stage}) on chain ${chain}:\n${JSON.stringify(tokens?.slice(0,5) || [])}\n\nAnalyze: which look promising vs likely rugs? Key warning signs?`
   );
 
@@ -808,7 +808,7 @@ app.get('/api/portfolio', x402Guard('/api/portfolio'), async (req, res) => {
   ]);
 
   const analysis = await askClaude(
-    'You are a portfolio analyst. Analyze the wallet holdings and provide insights on diversification, risk, and recommendations.',
+    'You are a portfolio analyst. Analyze the wallet holdings and provide insights on diversification, risk, and recommendations. Reply in the same language as the user query.',
     `Wallet: ${address}\nTotal value: ${JSON.stringify(totalValue)}\nTop holdings: ${JSON.stringify(balances?.slice(0,10) || [])}\n\nAnalyze: diversification, concentration risk, suggestions.`
   );
 
@@ -836,7 +836,7 @@ app.get('/api/security', x402Guard('/api/security'), async (req, res) => {
   ]);
 
   const analysis = await askClaude(
-    'You are a blockchain security expert. Analyze the scan results and provide a clear risk assessment with actionable advice.',
+    'You are a blockchain security expert. Analyze the scan results and provide a clear risk assessment with actionable advice. Reply in the same language as the user query.',
     `Security scan results:\nToken scan: ${JSON.stringify(tokenScan)}\nDApp scan: ${JSON.stringify(dappScan)}\n\nProvide: overall risk level, specific threats found, recommendations.`
   );
 
