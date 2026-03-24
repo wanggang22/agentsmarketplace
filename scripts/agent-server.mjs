@@ -43,6 +43,14 @@ const AGENT_REGISTRY  = '0xBeA9d2d1766C2E9498334D45C479046c28F49Ae2';
 const TASK_MANAGER    = '0x77B5A2Ab2dc74A5f9892e7e18c96B05cbd822D08';
 const NANOPAY_DEMO    = '0x2e6C48b3240ab6fED223B73b3903976C1D899B42';
 const USDC_ADDRESS    = '0x74b7F16337b8972027F6196A17a631aC6dE26d22';
+const USDT_ADDRESS    = '0x779ded0c9e1022225f8e0630b35a9b54be713736';
+const USDG_ADDRESS    = '0x4ae46a509f6b1d9056937ba4500cb143933d2dc8';
+
+const ACCEPTED_ASSETS = [
+  { address: USDC_ADDRESS, name: 'USD Coin',  symbol: 'USDC', version: '2' },
+  { address: USDT_ADDRESS, name: 'USD₮0',     symbol: 'USDT', version: '2' },
+  { address: USDG_ADDRESS, name: 'USDG',      symbol: 'USDG', version: '2' },
+];
 
 const xLayer = defineChain({
   id: 196, name: 'X Layer',
@@ -229,17 +237,17 @@ function buildPaymentRequirements(pricePath) {
   if (!price) return null;
   return {
     x402Version: 1,
-    accepts: [{
+    accepts: ACCEPTED_ASSETS.map(asset => ({
       scheme: 'exact',
       network: 'eip155:196',
       maxAmountRequired: price.amount,
       resource: pricePath,
-      description: `Pay ${price.display} USDC to access this API`,
+      description: `Pay ${price.display} ${asset.symbol} to access this API`,
       payTo: account.address,
-      asset: USDC_ADDRESS,
+      asset: asset.address,
       maxTimeoutSeconds: 300,
-      extra: { name: 'USD Coin', version: '2' },
-    }],
+      extra: { name: asset.name, version: asset.version },
+    })),
   };
 }
 
@@ -271,6 +279,13 @@ function x402Guard(pricePath) {
       return res.status(500).json({ error: 'x402 facilitator not configured (missing OKX API keys)' });
     }
 
+    // Match the asset the client chose (from their payload) to the correct accepts entry
+    const clientAsset = payload.payload?.authorization?.asset
+      || requirements.accepts[0].asset; // fallback to first
+    const matchedRequirement = requirements.accepts.find(
+      a => a.asset.toLowerCase() === clientAsset.toLowerCase()
+    ) || requirements.accepts[0];
+
     // Step 1: Verify via OKX facilitator
     try {
       log(`x402 verifying payment for ${pricePath}...`);
@@ -278,7 +293,7 @@ function x402Guard(pricePath) {
         x402Version: '1',
         chainIndex: '196',
         paymentPayload: payload,
-        paymentRequirements: requirements.accepts[0],
+        paymentRequirements: matchedRequirement,
       });
 
       if (verifyResult.code !== '0' || !verifyResult.data?.[0]?.isValid) {
@@ -301,7 +316,7 @@ function x402Guard(pricePath) {
         chainIndex: '196',
         syncSettle: true,
         paymentPayload: payload,
-        paymentRequirements: requirements.accepts[0],
+        paymentRequirements: matchedRequirement,
       });
 
       if (settleResult.code !== '0' || !settleResult.data?.[0]?.success) {
@@ -402,7 +417,7 @@ app.get('/api', (_req, res) => {
     agent: state.agentName,
     protocol: 'x402 via OKX Facilitator (zero gas)',
     network: 'X Layer (eip155:196)',
-    usdc: USDC_ADDRESS,
+    acceptedTokens: ACCEPTED_ASSETS.map(a => ({ symbol: a.symbol, address: a.address })),
     payTo: account.address,
     facilitator: 'OKX OnchainOS',
     gasSubsidy: 'OKX pays all settlement gas fees',
