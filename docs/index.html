@@ -145,9 +145,10 @@ a:hover{color:var(--accent-hover)}
 }
 nav{display:flex;align-items:center;gap:8px}
 .nav-link{
-  padding:8px 18px;border-radius:var(--radius-sm);color:var(--text-secondary);
-  font-size:.875rem;font-weight:500;transition:var(--transition);cursor:pointer;
+  padding:8px 12px;border-radius:var(--radius-sm);color:var(--text-secondary);
+  font-size:.82rem;font-weight:500;transition:var(--transition);cursor:pointer;
   border:none;background:none;font-family:var(--font);letter-spacing:-.01em;
+  white-space:nowrap;
 }
 .nav-link:hover{color:var(--text-primary);background:rgba(139,92,246,.08)}
 .nav-link.active{color:#fff;background:rgba(139,92,246,.15);font-weight:600}
@@ -829,9 +830,9 @@ nav{display:flex;align-items:center;gap:8px}
     </div>
     <nav id="mainNav">
       <button class="nav-link active" onclick="showSection('marketplace')">Marketplace</button>
-      <button class="nav-link" onclick="showSection('dashboard')">Dashboard</button>
-      <button class="nav-link" onclick="showSection('nanopayments')">x402</button>
-      <button class="nav-link" onclick="showSection('register')">Register</button>
+      <button class="nav-link" onclick="showSection('dashboard')">My Dashboard</button>
+      <button class="nav-link" onclick="showSection('nanopayments')">x402 Micropayments</button>
+      <button class="nav-link" onclick="showSection('register')">Register Agent</button>
     </nav>
     <div class="wallet-area">
       <span style="font-size:.65rem;font-weight:600;color:var(--cyan);background:rgba(6,182,212,.1);padding:3px 10px;border-radius:10px;border:1px solid rgba(6,182,212,.2);white-space:nowrap">&#9889; X Layer Mainnet</span>
