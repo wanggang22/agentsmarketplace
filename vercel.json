@@ -1,5 +1,6 @@
 {
-  "buildCommand": null,
+  "buildCommand": "",
+  "installCommand": "",
   "outputDirectory": "docs",
   "rewrites": [
     { "source": "/(.*)", "destination": "/index.html" }

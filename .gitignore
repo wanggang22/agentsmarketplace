@@ -4,3 +4,5 @@ broadcast/
 node_modules/
 .env
 *.key
+
+.vercel
