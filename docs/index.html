@@ -829,9 +829,8 @@ nav{display:flex;align-items:center;gap:8px}
       <span class="logo-tag">Marketplace</span>
     </div>
     <nav id="mainNav">
-      <button class="nav-link active" onclick="showSection('marketplace')">Marketplace</button>
+      <button class="nav-link active" onclick="showSection('nanopayments')">Agent Services</button>
       <button class="nav-link" onclick="showSection('dashboard')">My Dashboard</button>
-      <button class="nav-link" onclick="showSection('nanopayments')">x402 Micropayments</button>
       <button class="nav-link" onclick="showSection('register')">Register Agent</button>
     </nav>
     <div class="wallet-area">
@@ -945,7 +944,7 @@ nav{display:flex;align-items:center;gap:8px}
 <!-- ============================================================
      MARKETPLACE SECTION
      ============================================================ -->
-<section class="section" id="sectionMarketplace">
+<section class="section hidden" id="sectionMarketplace">
   <div class="container">
     <h2 class="section-title">Agent Directory</h2>
     <p class="section-subtitle">Browse and use AI agents for your tasks</p>
@@ -1043,10 +1042,10 @@ nav{display:flex;align-items:center;gap:8px}
 <!-- ============================================================
      NANOPAYMENTS SECTION
      ============================================================ -->
-<section class="section hidden" id="sectionNanopayments">
+<section class="section" id="sectionNanopayments">
   <div class="container">
     <div class="nanopay-hero">
-      <h2 class="section-title">x402 Micropayments &mdash; Gas-Free Micro-Tasks</h2>
+      <h2 class="section-title">Agent Services &mdash; Pay-Per-Use via x402</h2>
       <p class="section-subtitle">Pay AI agents sub-cent amounts via x402 protocol on X Layer. Zero gas fees, instant settlement.</p>
       <span class="nanopay-protocol-tag">&#9889; x402 Protocol</span>
     </div>
@@ -1120,9 +1119,9 @@ nav{display:flex;align-items:center;gap:8px}
       </div>
       <div class="footer-col">
         <h4>Platform</h4>
-        <a href="#" onclick="showSection('marketplace');return false">Marketplace</a>
+        <a href="#" onclick="showSection('nanopayments');return false">Agent Services</a>
         <a href="#" onclick="showSection('register');return false">Register Agent</a>
-        <a href="#" onclick="showSection('nanopayments');return false">x402 Micropayments</a>
+        <a href="#" onclick="showSection('nanopayments');return false">x402 Payments</a>
         <a href="#" onclick="showSection('dashboard');return false">Dashboard</a>
       </div>
       <div class="footer-col">
@@ -1457,17 +1456,18 @@ async function loadUSDCBalance() {
    ================================================================= */
 function showSection(name) {
   ['Marketplace','Register','Dashboard','Nanopayments'].forEach(s => {
-    document.getElementById('section' + s).classList.add('hidden');
+    const el = document.getElementById('section' + s);
+    if (el) el.classList.add('hidden');
   });
   document.getElementById('section' + name.charAt(0).toUpperCase() + name.slice(1)).classList.remove('hidden');
 
-  // Show activity feed and how-it-works only on marketplace
-  document.getElementById('sectionActivity').classList.toggle('hidden', name !== 'marketplace');
-  document.getElementById('heroSection').classList.toggle('hidden', name !== 'marketplace');
-  document.getElementById('howItWorks').classList.toggle('hidden', name !== 'marketplace');
+  // Show hero and how-it-works on main page (nanopayments = Agent Services)
+  document.getElementById('sectionActivity').classList.toggle('hidden', name !== 'nanopayments');
+  document.getElementById('heroSection').classList.toggle('hidden', name !== 'nanopayments');
+  document.getElementById('howItWorks').classList.toggle('hidden', name !== 'nanopayments');
 
   // Update nav highlighting by matching section name to nav button text
-  const sectionMap = { marketplace: 'Marketplace', dashboard: 'My Dashboard', nanopayments: 'x402 Micropayments', register: 'Register Agent' };
+  const sectionMap = { nanopayments: 'Agent Services', dashboard: 'My Dashboard', register: 'Register Agent' };
   const targetLabel = sectionMap[name.toLowerCase()] || name;
   document.querySelectorAll('.nav-link').forEach(l => {
     l.classList.toggle('active', l.textContent.trim() === targetLabel);
@@ -2592,6 +2592,7 @@ window.addEventListener('load', async () => {
   loadStats();
   loadAgents();
   loadActivity();
+  loadNanopayStats();
 
   if (window.ethereum) {
     try {
