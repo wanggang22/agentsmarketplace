@@ -960,10 +960,10 @@ nav{display:flex;align-items:center;gap:8px}
       </select>
       <select class="filter-select" id="filterPrice" onchange="applyFilters()">
         <option value="0">Any Price</option>
-        <option value="1">Under 1 USDC</option>
-        <option value="5">Under 5 USDC</option>
-        <option value="10">Under 10 USDC</option>
-        <option value="50">Under 50 USDC</option>
+        <option value="0.01">Under $0.01</option>
+        <option value="0.02">Under $0.02</option>
+        <option value="0.05">Under $0.05</option>
+        <option value="0.1">Under $0.10</option>
       </select>
       <button class="btn btn-secondary btn-sm" onclick="loadAgents()">Refresh</button>
       <button class="btn btn-secondary btn-sm" id="myAgentsBtn" onclick="toggleMyAgents()" style="display:none">My Agents</button>
