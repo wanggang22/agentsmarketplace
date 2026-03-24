@@ -126,22 +126,42 @@ async function okxRequest(method, path, body) {
 
 const hasOkxKeys = OKX_API_KEY && OKX_SECRET_KEY && OKX_PASSPHRASE;
 
-// ── OnchainOS Market API ──────────────────────────────────────────────────────
+// ── OnchainOS Market + DEX + Security APIs ───────────────────────────────────
 
-// Well-known token addresses for quick lookup
+// Well-known tokens
 const TOKEN_MAP = {
   'btc':  { chain: '1',   address: '0x2260fac5e5542a773aa44fbcfedf7c193bc2c599', name: 'Bitcoin' },
+  'wbtc': { chain: '1',   address: '0x2260fac5e5542a773aa44fbcfedf7c193bc2c599', name: 'Wrapped BTC' },
   'eth':  { chain: '1',   address: '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee', name: 'Ethereum' },
   'okb':  { chain: '196', address: '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee', name: 'OKB' },
   'usdc': { chain: '196', address: USDC_ADDRESS.toLowerCase(), name: 'USDC' },
   'usdt': { chain: '196', address: USDT_ADDRESS.toLowerCase(), name: 'USDT' },
+  'sol':  { chain: '501', address: 'So11111111111111111111111111111111111111112', name: 'Solana' },
 };
 
-async function getTokenPrice(query) {
-  // Try to match a known token
-  const q = query.toLowerCase().trim();
-  const token = TOKEN_MAP[q] || TOKEN_MAP['btc']; // default to BTC
+// Search token by name/symbol via OnchainOS
+async function searchToken(query) {
+  try {
+    const result = await okxRequest('GET', `/api/v6/dex/market/token/search?chains=1,196,501&search=${encodeURIComponent(query)}`);
+    if (result.code === '0' && result.data?.length > 0) {
+      const t = result.data[0];
+      return { chain: t.chainIndex, address: t.tokenContractAddress, name: t.tokenSymbol || t.tokenName, fullName: t.tokenName };
+    }
+  } catch (err) { log(`Token search error: ${err.message}`); }
+  return null;
+}
 
+// Resolve query to token (check map first, then search API)
+async function resolveToken(query) {
+  const q = query.toLowerCase().trim();
+  if (TOKEN_MAP[q]) return TOKEN_MAP[q];
+  const searched = await searchToken(query);
+  return searched || TOKEN_MAP['btc'];
+}
+
+// Get token price
+async function getTokenPrice(query) {
+  const token = await resolveToken(query);
   try {
     const result = await okxRequest('POST', '/api/v6/dex/market/price', [
       { chainIndex: token.chain, tokenContractAddress: token.address },
@@ -149,23 +169,73 @@ async function getTokenPrice(query) {
     if (result.code === '0' && result.data?.[0]) {
       return { price: result.data[0].price, token: token.name, chain: token.chain, timestamp: result.data[0].time };
     }
-  } catch (err) {
-    log(`Market API error: ${err.message}`);
-  }
+  } catch (err) { log(`Market price error: ${err.message}`); }
   return null;
 }
 
-async function getSwapQuote(fromToken, toToken, amount) {
+// Get detailed token info (market cap, volume, holders etc)
+async function getTokenInfo(query) {
+  const token = await resolveToken(query);
+  try {
+    const result = await okxRequest('POST', '/api/v6/dex/market/price-info', [
+      { chainIndex: token.chain, tokenContractAddress: token.address },
+    ]);
+    if (result.code === '0' && result.data?.[0]) return result.data[0];
+  } catch (err) { log(`Token info error: ${err.message}`); }
+  return null;
+}
+
+// Get K-line data
+async function getKline(query, bar = '1D', limit = 7) {
+  const token = await resolveToken(query);
   try {
     const result = await okxRequest('GET',
-      `/api/v5/dex/aggregator/quote?chainId=196&fromTokenAddress=${fromToken}&toTokenAddress=${toToken}&amount=${amount}`
+      `/api/v6/dex/market/candles?chainIndex=${token.chain}&tokenContractAddress=${token.address}&bar=${bar}&limit=${limit}`
     );
-    if (result.code === '0' && result.data?.[0]) {
-      return result.data[0];
+    if (result.code === '0' && result.data?.length > 0) {
+      return result.data.map(c => ({
+        time: c[0], open: c[1], high: c[2], low: c[3], close: c[4], volume: c[5], volumeUsd: c[6],
+      }));
     }
-  } catch (err) {
-    log(`DEX API error: ${err.message}`);
-  }
+  } catch (err) { log(`Kline error: ${err.message}`); }
+  return null;
+}
+
+// Get trending/hot tokens
+async function getHotTokens(chain = '1') {
+  try {
+    const result = await okxRequest('GET',
+      `/api/v6/dex/market/token/hot-token?rankingType=4&chain=${chain}&timeFrame=4`
+    );
+    if (result.code === '0' && result.data?.length > 0) {
+      return result.data.slice(0, 5).map(t => ({
+        name: t.tokenSymbol, price: t.price, priceChange24h: t.priceChange24h, volume24h: t.volume24h,
+      }));
+    }
+  } catch (err) { log(`Hot tokens error: ${err.message}`); }
+  return null;
+}
+
+// Security scan a token
+async function scanTokenSecurity(chain, address) {
+  try {
+    const result = await okxRequest('POST', '/api/v6/security/token-scan', {
+      source: 'onchain_os_cli',
+      tokenList: [{ chainId: chain, contractAddress: address }],
+    });
+    if (result.code === '0' && result.data?.[0]) return result.data[0];
+  } catch (err) { log(`Security scan error: ${err.message}`); }
+  return null;
+}
+
+// Get DEX swap quote
+async function getSwapQuote(chainIndex, fromToken, toToken, amount) {
+  try {
+    const result = await okxRequest('GET',
+      `/api/v6/dex/aggregator/quote?chainIndex=${chainIndex}&fromTokenAddress=${fromToken}&toTokenAddress=${toToken}&amount=${amount}`
+    );
+    if (result.code === '0' && result.data?.[0]) return result.data[0];
+  } catch (err) { log(`DEX quote error: ${err.message}`); }
   return null;
 }
 
@@ -416,28 +486,52 @@ function x402Guard(pricePath) {
 
 // ── API Endpoints ─────────────────────────────────────────────────────────────
 
-// /api/analyze — Real market data from OnchainOS + Claude AI analysis
+// /api/analyze — Full market intelligence from OnchainOS + Claude AI
 app.get('/api/analyze', x402Guard('/api/analyze'), async (req, res) => {
   const query = req.query.q || 'BTC';
   log(`/api/analyze: "${query}"`);
 
-  // 1. Fetch real price from OnchainOS Market API
-  const priceData = await getTokenPrice(query);
-  const priceInfo = priceData
-    ? `${priceData.token} current price: $${Number(priceData.price).toFixed(4)} (chain ${priceData.chain})`
-    : `Could not fetch live price for "${query}"`;
+  // Parallel fetch: price + token info + kline + hot tokens
+  const [priceData, tokenInfo, kline, hotTokens] = await Promise.all([
+    getTokenPrice(query),
+    getTokenInfo(query),
+    getKline(query, '1D', 7),
+    getHotTokens('1'),
+  ]);
 
-  // 2. Claude AI analysis with real market data
+  // Build data context for Claude
+  const dataContext = [];
+  if (priceData) dataContext.push(`Current price: $${Number(priceData.price).toFixed(4)} (${priceData.token})`);
+  if (tokenInfo) {
+    if (tokenInfo.marketCap) dataContext.push(`Market cap: $${Number(tokenInfo.marketCap).toLocaleString()}`);
+    if (tokenInfo.volume24h) dataContext.push(`24h volume: $${Number(tokenInfo.volume24h).toLocaleString()}`);
+    if (tokenInfo.priceChange24h) dataContext.push(`24h change: ${tokenInfo.priceChange24h}%`);
+  }
+  if (kline?.length > 0) {
+    const prices = kline.map(k => Number(k.close));
+    const high7d = Math.max(...prices).toFixed(2);
+    const low7d = Math.min(...prices).toFixed(2);
+    dataContext.push(`7-day range: $${low7d} - $${high7d}`);
+  }
+  if (hotTokens?.length > 0) {
+    dataContext.push(`Trending tokens: ${hotTokens.map(t => `${t.name}(${t.priceChange24h}%)`).join(', ')}`);
+  }
+
   const analysis = await askClaude(
-    'You are a crypto market analyst AI agent on X Layer. Give concise, data-driven analysis in 3-5 bullet points. Be specific with numbers when available.',
-    `Analyze this token/market: "${query}"\n\nLive data: ${priceInfo}\n\nProvide: price assessment, trend outlook, key risks, and recommendation.`
+    'You are a crypto market analyst AI agent powered by OKX OnchainOS data. Give concise, data-driven analysis. Use the real-time data provided. Format with bullet points.',
+    `Analyze: "${query}"\n\nReal-time data from OKX OnchainOS:\n${dataContext.join('\n') || 'No data available'}\n\nProvide: 1) Price assessment 2) Trend (with 7d chart context) 3) Market sentiment 4) Key risks 5) Recommendation`
   );
 
   const response = {
     agent: state.agentName, type: 'data-analysis', query,
-    marketData: priceData || { note: 'price unavailable' },
+    marketData: {
+      price: priceData,
+      details: tokenInfo ? { marketCap: tokenInfo.marketCap, volume24h: tokenInfo.volume24h, priceChange24h: tokenInfo.priceChange24h } : null,
+      kline7d: kline?.map(k => ({ date: new Date(Number(k.time)).toISOString().slice(0,10), close: k.close, volume: k.volumeUsd })),
+      trending: hotTokens,
+    },
     analysis,
-    poweredBy: { data: 'OKX OnchainOS Market API', ai: 'Claude (Anthropic)' },
+    poweredBy: { data: 'OKX OnchainOS (Market + Token + Kline)', ai: 'Claude (Anthropic)' },
     timestamp: new Date().toISOString(),
   };
   if (req.x402Settlement) {
@@ -473,26 +567,38 @@ app.get('/api/translate', x402Guard('/api/translate'), async (req, res) => {
   res.json(response);
 });
 
-// /api/audit — Real AI smart contract audit via Claude
+// /api/audit — Security scan (OnchainOS) + AI audit (Claude)
 app.get('/api/audit', x402Guard('/api/audit'), async (req, res) => {
   const contract = req.query.contract || '';
   const code = req.query.code || '';
+  const chain = req.query.chain || '196';
   log(`/api/audit: ${contract || 'inline code'}`);
 
-  const auditInput = code
-    ? `Audit this Solidity code:\n\n${code}`
-    : `Audit the smart contract at address ${contract} on X Layer (chain 196). Based on common patterns, provide a security assessment.`;
+  // Run OKX security scan if contract address provided
+  let securityScan = null;
+  if (contract && contract.startsWith('0x')) {
+    securityScan = await scanTokenSecurity(chain, contract);
+  }
 
-  const result = await askClaude(
-    'You are a smart contract security auditor AI agent. Provide a structured audit report with: 1) Overall Risk Level (CRITICAL/HIGH/MEDIUM/LOW), 2) Findings with severity, 3) Gas optimizations, 4) Recommendations. Be concise but thorough.',
+  const scanContext = securityScan
+    ? `OKX Security Scan results:\n- Risk level: ${securityScan.riskLevel || 'unknown'}\n- Warnings: ${JSON.stringify(securityScan.riskItemDetail || securityScan.warnings || [])}`
+    : 'No automated scan available';
+
+  const auditInput = code
+    ? `Audit this Solidity code:\n\n${code}\n\n${scanContext}`
+    : `Audit contract ${contract} on chain ${chain}.\n\n${scanContext}\n\nProvide a security assessment.`;
+
+  const audit = await askClaude(
+    'You are a smart contract security auditor AI agent powered by OKX OnchainOS security scanning. Provide: 1) Overall Risk (CRITICAL/HIGH/MEDIUM/LOW), 2) Findings with severity, 3) Gas optimizations, 4) Recommendations. Use the security scan data when available.',
     auditInput
   );
 
   const response = {
     agent: state.agentName, type: 'security-audit',
-    contract: contract || '(inline code)',
-    audit: result,
-    poweredBy: 'Claude (Anthropic)',
+    contract: contract || '(inline code)', chain,
+    securityScan: securityScan ? { riskLevel: securityScan.riskLevel, warnings: securityScan.riskItemDetail || securityScan.warnings } : null,
+    audit,
+    poweredBy: { scan: 'OKX OnchainOS Security', ai: 'Claude (Anthropic)' },
     timestamp: new Date().toISOString(),
   };
   if (req.x402Settlement) {
