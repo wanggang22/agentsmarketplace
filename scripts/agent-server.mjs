@@ -239,6 +239,103 @@ async function getSwapQuote(chainIndex, fromToken, toToken, amount) {
   return null;
 }
 
+// Smart money / whale / KOL signals
+async function getSignals(chain = '1', walletType = '1') {
+  try {
+    const result = await okxRequest('POST', '/api/v6/dex/market/signal/list', {
+      chainIndex: chain, walletType, pageSize: '10',
+    });
+    if (result.code === '0' && result.data?.length > 0) return result.data.slice(0, 10);
+  } catch (err) { log(`Signal error: ${err.message}`); }
+  return null;
+}
+
+// Leaderboard - top traders
+async function getLeaderboard(chain = '1', timeFrame = '4', sortBy = '1') {
+  try {
+    const result = await okxRequest('GET',
+      `/api/v6/dex/market/leaderboard/list?chainIndex=${chain}&timeFrame=${timeFrame}&sortBy=${sortBy}`
+    );
+    if (result.code === '0' && result.data?.length > 0) return result.data.slice(0, 10);
+  } catch (err) { log(`Leaderboard error: ${err.message}`); }
+  return null;
+}
+
+// Meme coin scanning
+async function getMemePumpTokens(chain = '501', stage = 'NEW') {
+  try {
+    const result = await okxRequest('GET',
+      `/api/v6/dex/market/memepump/tokenList?chainIndex=${chain}&stage=${stage}`
+    );
+    if (result.code === '0' && result.data?.length > 0) return result.data.slice(0, 10);
+  } catch (err) { log(`MemePump error: ${err.message}`); }
+  return null;
+}
+
+// Meme token dev info
+async function getMemeDevInfo(chain, address) {
+  try {
+    const result = await okxRequest('GET',
+      `/api/v6/dex/market/memepump/tokenDevInfo?chainIndex=${chain}&tokenContractAddress=${address}`
+    );
+    if (result.code === '0' && result.data) return result.data;
+  } catch (err) { log(`Meme dev info error: ${err.message}`); }
+  return null;
+}
+
+// Wallet portfolio - total value
+async function getPortfolioValue(address, chains = '1,196,501') {
+  try {
+    const result = await okxRequest('GET',
+      `/api/v6/dex/balance/total-value-by-address?address=${address}&chains=${chains}&assetType=0`
+    );
+    if (result.code === '0' && result.data) return result.data;
+  } catch (err) { log(`Portfolio error: ${err.message}`); }
+  return null;
+}
+
+// Wallet portfolio - all token balances
+async function getPortfolioBalances(address, chains = '1,196,501') {
+  try {
+    const result = await okxRequest('GET',
+      `/api/v6/dex/balance/all-token-balances-by-address?address=${address}&chains=${chains}`
+    );
+    if (result.code === '0' && result.data?.length > 0) return result.data;
+  } catch (err) { log(`Portfolio balances error: ${err.message}`); }
+  return null;
+}
+
+// Gateway - gas price
+async function getGasPrice(chain = '196') {
+  try {
+    const result = await okxRequest('GET', `/api/v6/dex/pre-transaction/gas-price?chainIndex=${chain}`);
+    if (result.code === '0' && result.data) return result.data;
+  } catch (err) { log(`Gas price error: ${err.message}`); }
+  return null;
+}
+
+// Gateway - simulate transaction
+async function simulateTransaction(chain, from, to, data) {
+  try {
+    const result = await okxRequest('POST', '/api/v6/dex/pre-transaction/simulate', {
+      chainIndex: chain, fromAddress: from, toAddress: to, txData: data,
+    });
+    if (result.code === '0' && result.data) return result.data;
+  } catch (err) { log(`Simulate error: ${err.message}`); }
+  return null;
+}
+
+// Full security scan (token + dapp)
+async function scanDappSecurity(url) {
+  try {
+    const result = await okxRequest('POST', '/api/v6/security/dapp-scan', {
+      source: 'onchain_os_cli', url,
+    });
+    if (result.code === '0' && result.data) return result.data;
+  } catch (err) { log(`DApp scan error: ${err.message}`); }
+  return null;
+}
+
 // ── Claude AI ─────────────────────────────────────────────────────────────────
 
 async function askClaude(systemPrompt, userMessage) {
@@ -365,6 +462,12 @@ const X402_PRICES = {
   '/api/analyze':   { amount: '10000',  display: '$0.01' },   // 0.01 USDC
   '/api/translate': { amount: '5000',   display: '$0.005' },  // 0.005 USDC
   '/api/audit':     { amount: '50000',  display: '$0.05' },   // 0.05 USDC
+  '/api/signals':   { amount: '20000',  display: '$0.02' },   // smart money signals
+  '/api/trenches':  { amount: '10000',  display: '$0.01' },   // meme coin scanner
+  '/api/swap':      { amount: '5000',   display: '$0.005' },  // DEX swap quote
+  '/api/portfolio': { amount: '10000',  display: '$0.01' },   // wallet portfolio
+  '/api/security':  { amount: '20000',  display: '$0.02' },   // full security scan
+  '/api/gas':       { amount: '1000',   display: '$0.001' },  // gas estimation
 };
 
 function buildPaymentRequirements(pricePath) {
@@ -605,6 +708,156 @@ app.get('/api/audit', x402Guard('/api/audit'), async (req, res) => {
     response.payment = req.x402Settlement;
     res.setHeader('PAYMENT-RESPONSE', Buffer.from(JSON.stringify(req.x402Settlement)).toString('base64'));
   }
+  res.json(response);
+});
+
+// /api/signals — Smart money / whale / KOL signals + leaderboard
+app.get('/api/signals', x402Guard('/api/signals'), async (req, res) => {
+  const chain = req.query.chain || '1';
+  const type = req.query.type || 'smart_money'; // smart_money, kol, whale
+  const walletType = { smart_money: '1', kol: '2', whale: '3' }[type] || '1';
+  log(`/api/signals: chain=${chain} type=${type}`);
+
+  const [signals, leaderboard] = await Promise.all([
+    getSignals(chain, walletType),
+    getLeaderboard(chain, '4', '1'), // 30-day, sort by PnL
+  ]);
+
+  const analysis = await askClaude(
+    'You are a DeFi signal analyst. Analyze the smart money/whale movements and provide actionable insights in 3-5 bullet points.',
+    `Signal type: ${type}\nChain: ${chain}\n\nRecent signals: ${JSON.stringify(signals?.slice(0,5) || [])}\n\nTop traders (30d): ${JSON.stringify(leaderboard?.slice(0,5) || [])}\n\nAnalyze: what are smart money doing? Any patterns?`
+  );
+
+  const response = {
+    agent: state.agentName, type: 'signals', signalType: type, chain,
+    signals: signals?.slice(0, 10), leaderboard: leaderboard?.slice(0, 5),
+    analysis,
+    poweredBy: { data: 'OKX OnchainOS (Signal + Leaderboard)', ai: 'Claude' },
+    timestamp: new Date().toISOString(),
+  };
+  if (req.x402Settlement) { response.payment = req.x402Settlement; res.setHeader('PAYMENT-RESPONSE', Buffer.from(JSON.stringify(req.x402Settlement)).toString('base64')); }
+  res.json(response);
+});
+
+// /api/trenches — Meme coin scanner
+app.get('/api/trenches', x402Guard('/api/trenches'), async (req, res) => {
+  const chain = req.query.chain || '501'; // Solana default for memes
+  const stage = req.query.stage || 'NEW';
+  log(`/api/trenches: chain=${chain} stage=${stage}`);
+
+  const tokens = await getMemePumpTokens(chain, stage);
+
+  const analysis = await askClaude(
+    'You are a meme coin analyst. Evaluate new meme tokens for potential and risks. Be direct about rug pull risks.',
+    `New meme tokens (${stage}) on chain ${chain}:\n${JSON.stringify(tokens?.slice(0,5) || [])}\n\nAnalyze: which look promising vs likely rugs? Key warning signs?`
+  );
+
+  const response = {
+    agent: state.agentName, type: 'trenches', chain, stage,
+    tokens: tokens?.slice(0, 10),
+    analysis,
+    poweredBy: { data: 'OKX OnchainOS (MemePump)', ai: 'Claude' },
+    timestamp: new Date().toISOString(),
+  };
+  if (req.x402Settlement) { response.payment = req.x402Settlement; res.setHeader('PAYMENT-RESPONSE', Buffer.from(JSON.stringify(req.x402Settlement)).toString('base64')); }
+  res.json(response);
+});
+
+// /api/swap — DEX swap quote (read-only, no execution)
+app.get('/api/swap', x402Guard('/api/swap'), async (req, res) => {
+  const chain = req.query.chain || '196';
+  const from = req.query.from || '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee'; // native token
+  const to = req.query.to || USDC_ADDRESS;
+  const amount = req.query.amount || '1000000000000000000'; // 1 token in wei
+  log(`/api/swap: ${from.slice(0,10)}→${to.slice(0,10)} amount=${amount}`);
+
+  const quote = await getSwapQuote(chain, from, to, amount);
+
+  const response = {
+    agent: state.agentName, type: 'swap-quote', chain,
+    fromToken: from, toToken: to, amount,
+    quote: quote ? {
+      toAmount: quote.toTokenAmount, toAmountUsd: quote.toTokenAmountUsd,
+      priceImpact: quote.priceImpactPercentage,
+      route: quote.dexRouterList,
+    } : null,
+    poweredBy: 'OKX OnchainOS (DEX Aggregator, 500+ sources)',
+    timestamp: new Date().toISOString(),
+  };
+  if (req.x402Settlement) { response.payment = req.x402Settlement; res.setHeader('PAYMENT-RESPONSE', Buffer.from(JSON.stringify(req.x402Settlement)).toString('base64')); }
+  res.json(response);
+});
+
+// /api/portfolio — Wallet portfolio analysis
+app.get('/api/portfolio', x402Guard('/api/portfolio'), async (req, res) => {
+  const address = req.query.address;
+  const chains = req.query.chains || '1,196,501,8453,56';
+  if (!address) return res.status(400).json({ error: 'address parameter required' });
+  log(`/api/portfolio: ${address.slice(0,10)}... chains=${chains}`);
+
+  const [totalValue, balances] = await Promise.all([
+    getPortfolioValue(address, chains),
+    getPortfolioBalances(address, chains),
+  ]);
+
+  const analysis = await askClaude(
+    'You are a portfolio analyst. Analyze the wallet holdings and provide insights on diversification, risk, and recommendations.',
+    `Wallet: ${address}\nTotal value: ${JSON.stringify(totalValue)}\nTop holdings: ${JSON.stringify(balances?.slice(0,10) || [])}\n\nAnalyze: diversification, concentration risk, suggestions.`
+  );
+
+  const response = {
+    agent: state.agentName, type: 'portfolio', address, chains,
+    totalValue, topHoldings: balances?.slice(0, 20),
+    analysis,
+    poweredBy: { data: 'OKX OnchainOS (Portfolio)', ai: 'Claude' },
+    timestamp: new Date().toISOString(),
+  };
+  if (req.x402Settlement) { response.payment = req.x402Settlement; res.setHeader('PAYMENT-RESPONSE', Buffer.from(JSON.stringify(req.x402Settlement)).toString('base64')); }
+  res.json(response);
+});
+
+// /api/security — Full security scan (token + DApp + AI analysis)
+app.get('/api/security', x402Guard('/api/security'), async (req, res) => {
+  const token = req.query.token;
+  const dapp = req.query.dapp;
+  const chain = req.query.chain || '1';
+  log(`/api/security: token=${token || 'none'} dapp=${dapp || 'none'}`);
+
+  const [tokenScan, dappScan] = await Promise.all([
+    token ? scanTokenSecurity(chain, token) : null,
+    dapp ? scanDappSecurity(dapp) : null,
+  ]);
+
+  const analysis = await askClaude(
+    'You are a blockchain security expert. Analyze the scan results and provide a clear risk assessment with actionable advice.',
+    `Security scan results:\nToken scan: ${JSON.stringify(tokenScan)}\nDApp scan: ${JSON.stringify(dappScan)}\n\nProvide: overall risk level, specific threats found, recommendations.`
+  );
+
+  const response = {
+    agent: state.agentName, type: 'security-scan',
+    tokenScan, dappScan,
+    analysis,
+    poweredBy: { data: 'OKX OnchainOS (Security)', ai: 'Claude' },
+    timestamp: new Date().toISOString(),
+  };
+  if (req.x402Settlement) { response.payment = req.x402Settlement; res.setHeader('PAYMENT-RESPONSE', Buffer.from(JSON.stringify(req.x402Settlement)).toString('base64')); }
+  res.json(response);
+});
+
+// /api/gas — Gas estimation + network status
+app.get('/api/gas', x402Guard('/api/gas'), async (req, res) => {
+  const chain = req.query.chain || '196';
+  log(`/api/gas: chain=${chain}`);
+
+  const gasData = await getGasPrice(chain);
+
+  const response = {
+    agent: state.agentName, type: 'gas-estimation', chain,
+    gas: gasData,
+    poweredBy: 'OKX OnchainOS (Gateway)',
+    timestamp: new Date().toISOString(),
+  };
+  if (req.x402Settlement) { response.payment = req.x402Settlement; res.setHeader('PAYMENT-RESPONSE', Buffer.from(JSON.stringify(req.x402Settlement)).toString('base64')); }
   res.json(response);
 });
 
