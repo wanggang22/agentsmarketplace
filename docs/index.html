@@ -1754,21 +1754,36 @@ async function tryX402Agent(endpoint, agentName) {
 }
 
 function showAgentServicesModal(agentName, baseUrl, apiData) {
-  const servicesHtml = apiData.endpoints.map(ep => {
-    const fullUrl = baseUrl.replace(/\/$/, '') + ep.path;
-    const priceLabel = `<span style="font-weight:700;color:var(--cyan)">${ep.price}</span>`;
-    const btnLabel = 'Use';
-    const btnClass = 'btn btn-primary btn-sm';
+  const payTo = apiData.payTo || '';
+  const usdcAddr = (apiData.acceptedTokens && apiData.acceptedTokens[0]?.address) || '0x74b7F16337b8972027F6196A17a631aC6dE26d22';
+
+  const servicesHtml = apiData.endpoints.map((ep, idx) => {
+    const epId = 'ep_' + idx;
+    // Determine input placeholder based on path
+    let placeholder = 'Enter query...';
+    if (ep.path.includes('analyze')) placeholder = 'Token name, e.g. BTC, ETH, SOL';
+    else if (ep.path.includes('translate')) placeholder = 'Text to translate';
+    else if (ep.path.includes('audit')) placeholder = 'Contract address (0x...)';
+    else if (ep.path.includes('signal')) placeholder = 'Chain ID, e.g. 1 (Ethereum)';
+    else if (ep.path.includes('trench')) placeholder = 'Chain ID, e.g. 501 (Solana)';
+    else if (ep.path.includes('swap')) placeholder = 'Amount in wei';
+    else if (ep.path.includes('portfolio')) placeholder = 'Wallet address (0x...)';
+    else if (ep.path.includes('security')) placeholder = 'Token address (0x...)';
+    else if (ep.path.includes('gas')) placeholder = 'Chain ID, e.g. 196';
+
     return `
-      <div style="display:flex;justify-content:space-between;align-items:center;padding:12px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:8px">
-        <div>
-          <div style="font-weight:600;font-size:.9rem;color:var(--text-primary)">${ep.method || 'GET'} ${ep.path}</div>
-          <div style="font-size:.8rem;color:var(--text-secondary)">${ep.description || ''}</div>
+      <div style="padding:14px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <div>
+            <div style="font-weight:600;font-size:.92rem;color:var(--text-primary)">${ep.description || ep.path}</div>
+          </div>
+          <span style="font-weight:700;color:var(--cyan);white-space:nowrap">${ep.price}</span>
         </div>
-        <div style="display:flex;align-items:center;gap:12px">
-          ${priceLabel}
-          <button class="${btnClass}" onclick="window.open('${fullUrl}','_blank')">${btnLabel}</button>
+        <div style="display:flex;gap:8px">
+          <input class="form-input" id="input_${epId}" type="text" placeholder="${placeholder}" style="flex:1;padding:8px 12px;font-size:.85rem">
+          <button class="btn btn-primary btn-sm" onclick="executeX402('${baseUrl}','${ep.path}','${epId}','${payTo}','${usdcAddr}','${ep.priceRaw}')">Pay ${ep.price}</button>
         </div>
+        <div id="result_${epId}" style="margin-top:10px;display:none;padding:12px;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-sm);font-size:.85rem;color:var(--text-secondary);max-height:300px;overflow-y:auto;white-space:pre-wrap;word-break:break-word"></div>
       </div>
     `;
   }).join('');
@@ -1778,26 +1793,150 @@ function showAgentServicesModal(agentName, baseUrl, apiData) {
   modal.id = 'agentServicesModal';
   modal.onclick = function(e) { if (e.target === this) this.remove(); };
   modal.innerHTML = `
-    <div class="modal" style="max-width:600px">
+    <div class="modal" style="max-width:680px;max-height:90vh;overflow-y:auto">
       <div class="modal-header">
-        <h2>${agentName} — x402 Services</h2>
+        <h2>${agentName}</h2>
         <button class="modal-close" onclick="document.getElementById('agentServicesModal').remove()">&times;</button>
       </div>
       <div class="modal-body">
-        <p style="font-size:.85rem;color:var(--text-secondary);margin-bottom:16px">
-          ${apiData.protocol || 'x402 Protocol'} &mdash; ${apiData.gasSubsidy || 'Zero gas fees'}
-        </p>
         <p style="font-size:.82rem;color:var(--text-muted);margin-bottom:16px">
-          Accepted: ${(apiData.acceptedTokens || []).map(t => t.symbol).join(', ') || 'USDC/USDT/USDG'}
+          x402 zero-gas payments &mdash; Accepted: ${(apiData.acceptedTokens || []).map(t => t.symbol).join(', ') || 'USDC/USDT/USDG'}
         </p>
         ${servicesHtml}
-        <p style="font-size:.78rem;color:var(--text-muted);margin-top:16px">
-          Pay to: <code style="font-size:.75rem">${apiData.payTo || 'unknown'}</code>
-        </p>
       </div>
     </div>
   `;
   document.body.appendChild(modal);
+}
+
+// Execute x402 payment + API call from browser
+async function executeX402(baseUrl, path, epId, payTo, usdcAddr, amountRaw) {
+  const input = document.getElementById('input_' + epId);
+  const resultDiv = document.getElementById('result_' + epId);
+  const query = input?.value || '';
+
+  if (!userAccount) {
+    showToast('Connect your wallet first', 'error');
+    connectWallet();
+    return;
+  }
+
+  resultDiv.style.display = 'block';
+  resultDiv.innerHTML = '<span style="color:var(--accent)">Signing payment...</span>';
+
+  try {
+    // Build query params based on path
+    let queryParams = '';
+    if (path.includes('analyze')) queryParams = '?q=' + encodeURIComponent(query || 'BTC');
+    else if (path.includes('translate')) queryParams = '?text=' + encodeURIComponent(query || 'Hello') + '&to=zh';
+    else if (path.includes('audit')) queryParams = '?contract=' + encodeURIComponent(query || '0x0');
+    else if (path.includes('signal')) queryParams = '?chain=' + encodeURIComponent(query || '1');
+    else if (path.includes('trench')) queryParams = '?chain=' + encodeURIComponent(query || '501');
+    else if (path.includes('swap')) queryParams = '?chain=196&amount=' + encodeURIComponent(query || '1000000000000000000');
+    else if (path.includes('portfolio')) queryParams = '?address=' + encodeURIComponent(query || userAccount);
+    else if (path.includes('security')) queryParams = '?token=' + encodeURIComponent(query || '0x0');
+    else if (path.includes('gas')) queryParams = '?chain=' + encodeURIComponent(query || '196');
+
+    const fullUrl = baseUrl.replace(/\/$/, '') + path + queryParams;
+
+    // Step 1: Generate random nonce
+    const nonce = '0x' + Array.from(crypto.getRandomValues(new Uint8Array(32))).map(b => b.toString(16).padStart(2, '0')).join('');
+    const validBefore = Math.floor(Date.now() / 1000) + 300;
+
+    // Step 2: Sign EIP-3009 transferWithAuthorization via MetaMask
+    resultDiv.innerHTML = '<span style="color:var(--accent)">Requesting wallet signature (zero gas)...</span>';
+
+    const msgParams = JSON.stringify({
+      types: {
+        EIP712Domain: [
+          { name: 'name', type: 'string' },
+          { name: 'version', type: 'string' },
+          { name: 'chainId', type: 'uint256' },
+          { name: 'verifyingContract', type: 'address' },
+        ],
+        TransferWithAuthorization: [
+          { name: 'from', type: 'address' },
+          { name: 'to', type: 'address' },
+          { name: 'value', type: 'uint256' },
+          { name: 'validAfter', type: 'uint256' },
+          { name: 'validBefore', type: 'uint256' },
+          { name: 'nonce', type: 'bytes32' },
+        ],
+      },
+      primaryType: 'TransferWithAuthorization',
+      domain: {
+        name: 'USD Coin',
+        version: '2',
+        chainId: 196,
+        verifyingContract: usdcAddr,
+      },
+      message: {
+        from: userAccount,
+        to: payTo,
+        value: amountRaw,
+        validAfter: '0',
+        validBefore: String(validBefore),
+        nonce: nonce,
+      },
+    });
+
+    const signature = await window.ethereum.request({
+      method: 'eth_signTypedData_v4',
+      params: [userAccount, msgParams],
+    });
+
+    // Step 3: Build x402 payment header
+    resultDiv.innerHTML = '<span style="color:var(--accent)">Sending to agent (OKX settling on-chain)...</span>';
+
+    const paymentPayload = {
+      x402Version: 1,
+      scheme: 'exact',
+      network: 'eip155:196',
+      payload: {
+        signature,
+        authorization: {
+          from: userAccount,
+          to: payTo,
+          value: amountRaw,
+          validAfter: '0',
+          validBefore: String(validBefore),
+          nonce: nonce,
+        },
+      },
+    };
+
+    const paymentHeader = btoa(JSON.stringify(paymentPayload));
+
+    // Step 4: Call the API with payment
+    const resp = await fetch(fullUrl, {
+      headers: { 'PAYMENT-SIGNATURE': paymentHeader },
+    });
+
+    const data = await resp.json();
+
+    if (resp.status === 200) {
+      // Format the result nicely
+      const txHash = data.payment?.transaction;
+      const txLink = txHash ? '<br><a href="https://www.okx.com/web3/explorer/xlayer/tx/' + txHash + '" target="_blank" rel="noopener" style="color:var(--success);font-size:.8rem">View transaction on explorer</a>' : '';
+
+      let resultText = '';
+      if (data.analysis) resultText = data.analysis;
+      else if (data.result) resultText = typeof data.result === 'string' ? data.result : JSON.stringify(data.result, null, 2);
+      else if (data.audit) resultText = data.audit;
+      else resultText = JSON.stringify(data, null, 2);
+
+      resultDiv.innerHTML = '<div style="color:var(--success);font-weight:600;margin-bottom:8px">Payment settled (zero gas) ' + (data.payment?.amount || '') + '</div>' + resultText + txLink;
+      showToast('x402 payment successful!', 'success');
+    } else {
+      resultDiv.innerHTML = '<span style="color:var(--danger)">Error: ' + (data.error || data.reason || resp.status) + '</span>';
+    }
+  } catch (err) {
+    if (err.code === 4001) {
+      resultDiv.innerHTML = '<span style="color:var(--text-muted)">Signature cancelled</span>';
+    } else {
+      resultDiv.innerHTML = '<span style="color:var(--danger)">Error: ' + err.message + '</span>';
+    }
+  }
 }
 
 function loadMarketplaceX402() {
