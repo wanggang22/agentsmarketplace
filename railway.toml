@@ -1,0 +1,9 @@
+[build]
+builder = "dockerfile"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+startCommand = "node scripts/agent-server.mjs"
+healthcheckPath = "/status"
+healthcheckTimeout = 30
+restartPolicyType = "always"

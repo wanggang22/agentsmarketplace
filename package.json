@@ -1,0 +1,21 @@
+{
+  "name": "xlayeragent-marketplace",
+  "version": "1.0.0",
+  "description": "AI Agent Service Marketplace on X Layer",
+  "main": "index.js",
+  "type": "commonjs",
+  "directories": {
+    "doc": "docs",
+    "lib": "lib",
+    "test": "test"
+  },
+  "scripts": {
+    "test": "forge test",
+    "build": "forge build",
+    "deploy": "forge script script/Deploy.s.sol --rpc-url https://rpc.xlayer.tech --broadcast --legacy"
+  },
+  "dependencies": {
+    "express": "^5.2.1",
+    "viem": "^2.47.6"
+  }
+}
