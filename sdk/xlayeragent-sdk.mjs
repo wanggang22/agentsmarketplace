@@ -52,7 +52,7 @@ const DEFAULT_ADDRESSES = {
   TaskManager:      '0x77B5A2Ab2dc74A5f9892e7e18c96B05cbd822D08',
   ReputationEngine: '0x826ca4b36A17a73a22FA0bbE0A1D95432771B2f6',
   NanopayDemo:      '0x2e6C48b3240ab6fED223B73b3903976C1D899B42',
-  USDC:             '0x74b7F16337b8972027F6196A17a631ac6dE26d22',
+  USDC:             '0x74b7F16337b8972027F6196A17a631aC6dE26d22',
 };
 
 // ---------------------------------------------------------------------------
