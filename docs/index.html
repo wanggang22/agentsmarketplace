@@ -1978,8 +1978,10 @@ async function executeX402(baseUrl, path, epId, payTo, usdcAddr, amountRaw) {
       let resultText = '';
       if (data.answer) resultText = data.answer;
       else if (data.analysis) resultText = data.analysis;
-      else if (data.result) resultText = typeof data.result === 'string' ? data.result : JSON.stringify(data.result, null, 2);
       else if (data.audit) resultText = data.audit;
+      else if (data.result) resultText = typeof data.result === 'string' ? data.result : JSON.stringify(data.result, null, 2);
+      else if (data.quote) resultText = data.quote.toAmountUsd ? 'Swap output: $' + Number(data.quote.toAmountUsd).toFixed(4) + ' (' + data.quote.toAmount + ')\\nPrice impact: ' + (data.quote.priceImpact || 'N/A') : JSON.stringify(data.quote, null, 2);
+      else if (data.gas) resultText = JSON.stringify(data.gas, null, 2);
       else resultText = JSON.stringify(data, null, 2);
 
       resultDiv.innerHTML = '<div style="color:var(--success);font-weight:600;margin-bottom:8px">Payment settled (zero gas) ' + (data.payment?.amount || '') + '</div>' + resultText + txLink;
