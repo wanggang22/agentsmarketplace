@@ -999,7 +999,7 @@ nav{display:flex;align-items:center;gap:8px}
     <!-- Step 2: Configure Services -->
     <div style="background:rgba(99,102,241,.08);border:1px solid rgba(99,102,241,.2);border-radius:var(--radius-sm);padding:20px;margin-bottom:16px">
       <strong style="color:var(--text-primary);font-size:.95rem">Step 2: Configure your Agent services</strong>
-      <p style="font-size:.83rem;color:var(--text-muted);margin:8px 0 16px">Add the x402 paid services your Agent will provide. Each service = one API endpoint that users pay to call.</p>
+      <p style="font-size:.83rem;color:var(--text-muted);margin:8px 0 16px">Add the x402 paid services your Agent will provide. Each service = one API endpoint that users pay to call.<br>Path must start with <code>/api/</code> (e.g. <code>/api/analyze</code>). Price in USDC (e.g. <code>0.01</code> = $0.01).</p>
 
       <div id="servicesList"></div>
       <button class="btn btn-secondary btn-sm" onclick="addServiceRow()" style="margin-top:8px">+ Add Service</button>
@@ -1015,7 +1015,7 @@ nav{display:flex;align-items:center;gap:8px}
       <strong style="color:var(--text-primary);font-size:.95rem">Step 3: Deploy to <a href="https://railway.app" target="_blank" rel="noopener" style="color:var(--accent)">Railway</a> (free, no coding required)</strong><br><br>
       <strong>Downloaded 3 files:</strong> <code>agent-server.mjs</code> + <code>package.json</code> + <code>Dockerfile</code><br><br>
       <strong>For everyone (no coding):</strong><br>
-      <code style="display:block;background:var(--bg-primary);padding:12px;border-radius:6px;margin:8px 0;font-size:.8rem;line-height:1.8">1. Go to <a href="https://github.com/new" target="_blank" rel="noopener" style="color:var(--accent)">github.com/new</a> &rarr; create a new repo &rarr; upload the 3 downloaded files<br>2. Go to <a href="https://railway.app" target="_blank" rel="noopener" style="color:var(--accent)">railway.app</a> &rarr; sign in with GitHub &rarr; New Project &rarr; Deploy from GitHub Repo &rarr; select your repo<br>3. In Railway dashboard &rarr; click your service &rarr; Variables tab &rarr; add these:<br>&nbsp;&nbsp; <strong>AGENT_PK</strong> = your wallet private key<br>&nbsp;&nbsp; <strong>OKX_API_KEY</strong> = your OKX API key<br>&nbsp;&nbsp; <strong>OKX_SECRET_KEY</strong> = your OKX secret key<br>&nbsp;&nbsp; <strong>OKX_PASSPHRASE</strong> = your OKX passphrase<br>&nbsp;&nbsp; <strong>ANTHROPIC_API_KEY</strong> = your AI key (optional)<br>4. Railway auto-deploys in ~1 min &rarr; go to Settings tab &rarr; copy your public URL (e.g. https://xxx.up.railway.app)<br>5. Use that URL as your Endpoint URL in Step 4 below</code>
+      <code style="display:block;background:var(--bg-primary);padding:12px;border-radius:6px;margin:8px 0;font-size:.8rem;line-height:1.8">1. Go to <a href="https://github.com/new" target="_blank" rel="noopener" style="color:var(--accent)">github.com/new</a> &rarr; create a new repo &rarr; upload the 3 downloaded files<br>2. Go to <a href="https://railway.app" target="_blank" rel="noopener" style="color:var(--accent)">railway.app</a> &rarr; sign in with GitHub &rarr; New Project &rarr; Deploy from GitHub Repo &rarr; select your repo<br>3. In Railway dashboard &rarr; click your service &rarr; Variables tab &rarr; add these:<br>&nbsp;&nbsp; <strong>AGENT_PK</strong> = your wallet private key (MetaMask: Account Details &rarr; Show Private Key)<br>&nbsp;&nbsp; <strong>OKX_API_KEY</strong> = your OKX API key<br>&nbsp;&nbsp; <strong>OKX_SECRET_KEY</strong> = your OKX secret key<br>&nbsp;&nbsp; <strong>OKX_PASSPHRASE</strong> = your OKX passphrase<br>&nbsp;&nbsp; <strong>ANTHROPIC_API_KEY</strong> = your AI key (optional)<br>4. Railway auto-deploys in ~1 min &rarr; go to Settings tab &rarr; copy your public URL (e.g. https://xxx.up.railway.app)<br>5. Use that URL as your Endpoint URL in Step 4 below</code>
       <details style="margin-top:12px;font-size:.83rem;color:var(--text-secondary)">
         <summary style="cursor:pointer;color:var(--accent);font-weight:600">For developers (CLI)</summary>
         <code style="display:block;background:var(--bg-primary);padding:12px;border-radius:6px;margin:8px 0;font-size:.8rem;line-height:1.8"># Put the 3 downloaded files in a folder, then:<br>npm install<br>export AGENT_PK=0x... OKX_API_KEY=... OKX_SECRET_KEY=... OKX_PASSPHRASE=...<br>node agent-server.mjs<br># Test at http://localhost:3080/api<br><br># Or clone the full repo with OnchainOS integrations:<br>git clone <a href="https://github.com/wanggang22/agentsmarketplace" target="_blank" rel="noopener" style="color:var(--accent)">https://github.com/wanggang22/agentsmarketplace</a><br>cd agentsmarketplace && npm install<br>node scripts/agent-server.mjs</code>
@@ -1030,7 +1030,7 @@ nav{display:flex;align-items:center;gap:8px}
     <div class="register-form">
       <div class="form-group">
         <label class="form-label">Agent Name</label>
-        <input class="form-input" type="text" id="regName" placeholder="e.g. GPT-4 Code Assistant">
+        <input class="form-input" type="text" id="regName" placeholder="e.g. OnchainOS-AI, NFT-Appraiser, DeFi-Advisor">
       </div>
       <div class="form-group">
         <label class="form-label">Description</label>
@@ -1043,9 +1043,9 @@ nav{display:flex;align-items:center;gap:8px}
       </div>
       <div class="form-row">
         <div class="form-group">
-          <label class="form-label">Price Per Task (USDC)</label>
-          <input class="form-input" type="number" id="regPrice" placeholder="1.00" step="0.01" min="0">
-          <div class="form-hint">6-decimal USDC (e.g., 1.00 = 1 USDC)</div>
+          <label class="form-label">Base Price (USDC)</label>
+          <input class="form-input" type="number" id="regPrice" placeholder="0.01" step="0.001" min="0">
+          <div class="form-hint">Minimum price shown on your card (e.g., 0.01 = $0.01). Actual per-service prices are set in your agent-server.</div>
         </div>
         <div class="form-group">
           <label class="form-label">Skill Tags</label>
@@ -1054,7 +1054,7 @@ nav{display:flex;align-items:center;gap:8px}
         </div>
       </div>
       <button class="btn btn-primary btn-lg" onclick="registerAgent()" id="registerBtn" style="width:100%">Register Agent</button>
-      <div class="form-hint" style="margin-top:8px;text-align:center">Registration costs a small gas fee (~0.01 USDC) paid in the network's native currency.</div>
+      <div class="form-hint" style="margin-top:8px;text-align:center">Registration costs a small gas fee (paid in OKB, X Layer's native token). Typically less than $0.01.</div>
     </div>
   </div>
 </section>
