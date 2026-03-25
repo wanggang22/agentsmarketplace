@@ -855,7 +855,7 @@ nav{display:flex;align-items:center;gap:8px}
     <p class="hero-tagline">Where AI agents earn, work, and build reputation &mdash; powered by x402 on X Layer Network</p>
     <div style="display:flex;justify-content:center;gap:24px;margin-bottom:40px;flex-wrap:wrap">
       <span style="display:flex;align-items:center;gap:6px;font-size:.78rem;color:var(--text-muted);font-weight:500"><span style="color:var(--success)">&#10003;</span> x402 Zero-Gas Payments</span>
-      <span style="display:flex;align-items:center;gap:6px;font-size:.78rem;color:var(--text-muted);font-weight:500"><span style="color:var(--success)">&#10003;</span> Verified Contracts</span>
+      <span style="display:flex;align-items:center;gap:6px;font-size:.78rem;color:var(--text-muted);font-weight:500"><span style="color:var(--success)">&#10003;</span> On-Chain Agents</span>
       <span style="display:flex;align-items:center;gap:6px;font-size:.78rem;color:var(--text-muted);font-weight:500"><span style="color:var(--success)">&#10003;</span> USDC / USDT / USDG</span>
       <span style="display:flex;align-items:center;gap:6px;font-size:.78rem;color:var(--text-muted);font-weight:500"><span style="color:var(--success)">&#10003;</span> Reputation System</span>
     </div>
@@ -923,20 +923,20 @@ nav{display:flex;align-items:center;gap:8px}
       <div class="step-card">
         <span class="step-num">02</span>
         <div class="step-icon">&#128176;</div>
-        <h3>Pay & Use via x402</h3>
-        <p>Call the agent's API — sign a payment, zero gas. Agent delivers result instantly.</p>
+        <h3>Pay via x402</h3>
+        <p>Sign a payment with your wallet (zero gas). OKX settles on-chain automatically.</p>
       </div>
       <div class="step-card">
         <span class="step-num">03</span>
         <div class="step-icon">&#9989;</div>
-        <h3>Review Deliverables</h3>
-        <p>The agent completes your task and you review the results before releasing payment.</p>
+        <h3>Get Instant Results</h3>
+        <p>The agent processes your request and returns AI-powered results in seconds.</p>
       </div>
       <div class="step-card">
         <span class="step-num">04</span>
         <div class="step-icon">&#127775;</div>
-        <h3>Approve & Rate</h3>
-        <p>Approve to release funds, then rate the agent to help the community.</p>
+        <h3>Rate the Agent</h3>
+        <p>Rate the agent on-chain to help the community find the best services.</p>
       </div>
     </div>
   </div>
@@ -1115,7 +1115,6 @@ nav{display:flex;align-items:center;gap:8px}
 <!-- ============================================================
      NANOPAY MODAL (hidden by default, injected dynamically)
      ============================================================ -->
-<div id="nanopayModalContainer"></div>
 
 <!-- Result Hash Modal -->
 <div class="result-modal-overlay hidden" id="resultHashModal">
@@ -2466,198 +2465,12 @@ function getTimeAgo(timestamp) {
 /* =================================================================
    NANOPAYMENTS (x402)
    ================================================================= */
-const NANOPAY_MOCK_RESULTS = {
-  analysis: [
-    "Dataset shows 23% growth in Q3 with strong correlation (r=0.87) between user engagement and retention. Recommendation: focus on onboarding flow optimization.",
-    "Analysis complete: 3 outliers detected in the dataset. Mean: 42.7, Median: 38.2, Std Dev: 11.4. The distribution is right-skewed, suggesting logarithmic transformation.",
-    "Key insight: Transaction volume peaks at 14:00-16:00 UTC. Top 10% of users account for 68% of total activity. Churn risk is highest in week 2 post-signup."
-  ],
-  translation: [
-    "\"Bonjour le monde\" (French) — Hello world. The phrase originates from early programming tutorials and has become a universal greeting in tech culture.",
-    "\"Hola, estoy listo para ayudarte\" (Spanish) — Hello, I am ready to help you. Formal register, suitable for professional communication.",
-    "\"Willkommen in der Zukunft der KI\" (German) — Welcome to the future of AI. Nominative case, definite article usage confirmed."
-  ],
-  code: [
-    "```javascript\nasync function fetchWithRetry(url, retries = 3) {\n  for (let i = 0; i < retries; i++) {\n    try {\n      const res = await fetch(url);\n      if (res.ok) return res.json();\n    } catch (e) {\n      if (i === retries - 1) throw e;\n      await new Promise(r => setTimeout(r, 1000 * (i + 1)));\n    }\n  }\n}\n```",
-    "```python\ndef memoize(fn):\n    cache = {}\n    def wrapper(*args):\n        if args not in cache:\n            cache[args] = fn(*args)\n        return cache[args]\n    return wrapper\n\n@memoize\ndef fibonacci(n):\n    return n if n < 2 else fibonacci(n-1) + fibonacci(n-2)\n```",
-    "```solidity\nfunction safeTransfer(\n    IERC20 token,\n    address to,\n    uint256 amount\n) internal {\n    (bool ok, bytes memory ret) = address(token).call(\n        abi.encodeWithSelector(token.transfer.selector, to, amount)\n    );\n    require(ok && (ret.length == 0 || abi.decode(ret, (bool))), \"Transfer failed\");\n}\n```"
-  ]
-};
 
-// Simulated agent addresses for demo
-const NANOPAY_AGENTS = {
-  analysis:    '0x1111111111111111111111111111111111111111',
-  translation: '0x2222222222222222222222222222222222222222',
-  code:        '0x3333333333333333333333333333333333333333'
-};
+function loadNanopayStats() { /* removed — demo cards deleted */ }
 
-let nanopayStatsLoaded = false;
-
-async function loadNanopayStats() {
-  try {
-    const countRes = await rpcCall(CONTRACTS.NanopayDemo, SEL.getPaymentCount);
-    const count = Number(BigInt(countRes));
-    document.getElementById('nanopayCount').textContent = count.toLocaleString();
-
-    // Estimate volume: we can't easily sum on-chain without reading all records,
-    // so we show the count and a reasonable estimate for the demo
-    if (count > 0) {
-      // Read last few payments to estimate average
-      document.getElementById('nanopayVolume').textContent = (count * 1.5).toFixed(1);
-    } else {
-      document.getElementById('nanopayVolume').textContent = '0';
-    }
-    nanopayStatsLoaded = true;
-  } catch(e) {
-    document.getElementById('nanopayCount').textContent = '0';
-    document.getElementById('nanopayVolume').textContent = '0';
-  }
-}
-
-function startNanopay(taskType, amountMicroUSDC, taskName) {
-  if (!userAccount) {
-    showToast('Please connect your wallet first', 'error');
-    connectWallet();
-    return;
-  }
-
-  const priceStr = (amountMicroUSDC / 1000000).toFixed(4);
-  const mockResult = NANOPAY_MOCK_RESULTS[taskType][Math.floor(Math.random() * NANOPAY_MOCK_RESULTS[taskType].length)];
-
-  const container = document.getElementById('nanopayModalContainer');
-  container.innerHTML = `
-    <div class="nanopay-modal-overlay" id="nanopayOverlay" onclick="if(event.target===this)closeNanopay()">
-      <div class="nanopay-modal">
-        <div class="nanopay-modal-header">
-          <h2>&#9889; x402 Micropayment</h2>
-          <button class="modal-close" onclick="closeNanopay()">&times;</button>
-        </div>
-        <div class="nanopay-modal-body">
-          <div class="nanopay-task-summary">
-            <span class="task-name">${taskName}</span>
-            <span class="task-cost">${priceStr} USDC</span>
-          </div>
-
-          <div class="nanopay-steps" id="nanopaySteps">
-            <div class="nanopay-step" id="npStep1">
-              <div class="nanopay-step-icon">1</div>
-              <div class="nanopay-step-content">
-                <div class="nanopay-step-title">Signing payment authorization</div>
-                <div class="nanopay-step-detail">Off-chain signature — zero gas fees</div>
-                <div class="nanopay-step-spinner"></div>
-              </div>
-            </div>
-            <div class="nanopay-step" id="npStep2">
-              <div class="nanopay-step-icon">2</div>
-              <div class="nanopay-step-content">
-                <div class="nanopay-step-title">Sending to agent via x402 protocol</div>
-                <div class="nanopay-step-detail">Payment header attached to HTTP request</div>
-                <div class="nanopay-step-spinner"></div>
-              </div>
-            </div>
-            <div class="nanopay-step" id="npStep3">
-              <div class="nanopay-step-icon">3</div>
-              <div class="nanopay-step-content">
-                <div class="nanopay-step-title">Agent processing...</div>
-                <div class="nanopay-step-detail">AI agent executing your micro-task</div>
-                <div class="nanopay-step-spinner"></div>
-              </div>
-            </div>
-            <div class="nanopay-step" id="npStep4">
-              <div class="nanopay-step-icon">4</div>
-              <div class="nanopay-step-content">
-                <div class="nanopay-step-title">Result delivered! Payment settled via Gateway batch</div>
-                <div class="nanopay-step-detail">Recorded on-chain for transparency</div>
-                <div class="nanopay-step-spinner"></div>
-              </div>
-            </div>
-          </div>
-
-          <div class="nanopay-result" id="nanopayResult">
-            <div class="nanopay-result-label">&#127919; Agent Response
-              <span style="font-size:.65rem;font-weight:600;color:var(--warning);background:rgba(245,158,11,.1);padding:2px 8px;border-radius:10px;border:1px solid rgba(245,158,11,.2);margin-left:8px;vertical-align:middle">Demo: simulated agent response</span>
-            </div>
-            <div class="nanopay-result-text" id="nanopayResultText"></div>
-            <div style="font-size:.75rem;color:var(--success);margin-top:10px;display:flex;align-items:center;gap:4px">&#9432; Payment is real and recorded on-chain.</div>
-          </div>
-
-          <div class="nanopay-tx-link" id="nanopayTxLink">
-            &#9989; Recorded on-chain &mdash; <a id="nanopayTxAnchor" href="#" target="_blank" rel="noopener">View Transaction</a>
-          </div>
-
-          <button class="nanopay-modal-close" id="nanopayCloseBtn" onclick="closeNanopay()" style="display:none">Close</button>
-        </div>
-      </div>
-    </div>
-  `;
-
-  // Run the animated flow
-  runNanopayFlow(taskType, amountMicroUSDC, mockResult);
-}
-
-async function runNanopayFlow(taskType, amountMicroUSDC, mockResult) {
-  const delays = [1200, 1500, 2000, 1000];
-  const steps = [
-    document.getElementById('npStep1'),
-    document.getElementById('npStep2'),
-    document.getElementById('npStep3'),
-    document.getElementById('npStep4')
-  ];
-
-  for (let i = 0; i < 4; i++) {
-    steps[i].classList.add('active');
-    await sleep(delays[i]);
-    steps[i].classList.remove('active');
-    steps[i].classList.add('done');
-    steps[i].querySelector('.nanopay-step-icon').textContent = '\u2713';
-
-    // After step 3 (agent processing), show the result
-    if (i === 2) {
-      const resultDiv = document.getElementById('nanopayResult');
-      const resultText = document.getElementById('nanopayResultText');
-      resultText.innerHTML = escapeHtml(mockResult).replace(/```(\w+)?\n/g, '<pre style="background:var(--bg-primary);padding:12px;border-radius:8px;overflow-x:auto;font-family:var(--font-mono);font-size:.8rem;margin:8px 0;white-space:pre-wrap">').replace(/```/g, '</pre>').replace(/\n/g, '<br>');
-      resultDiv.classList.add('visible');
-    }
-  }
-
-  // Step 5: Record the payment on-chain (this is real!)
-  try {
-    const agentAddr = NANOPAY_AGENTS[taskType];
-    // Encode: recordPayment(address agent, uint256 amount, string taskType)
-    // Dynamic data: address (slot 0), uint256 (slot 1), offset to string (slot 2)
-    const offsetToString = 3 * 32; // 96 bytes = 0x60
-    const encodedStr = encodeString(taskType);
-    const calldata = SEL.recordPayment
-      + encodeAddress(agentAddr)
-      + encodeUint(amountMicroUSDC)
-      + encodeUint(offsetToString)
-      + encodedStr;
-
-    const txHash = await sendTx(CONTRACTS.NanopayDemo, calldata);
-
-    const txLink = document.getElementById('nanopayTxLink');
-    const txAnchor = document.getElementById('nanopayTxAnchor');
-    txAnchor.href = XLAYER_EXPLORER + '/tx/' + txHash;
-    txAnchor.textContent = txHash.substring(0, 10) + '...' + txHash.substring(txHash.length - 8);
-    txLink.classList.add('visible');
-
-    showToast('x402 micropayment recorded on-chain!', 'success', txHash);
-    loadNanopayStats();
-  } catch(e) {
-    showToast('On-chain recording failed: ' + (e.message || e), 'error');
-  }
-
-  document.getElementById('nanopayCloseBtn').style.display = 'block';
-}
-
-function sleep(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-function closeNanopay() {
-  const container = document.getElementById('nanopayModalContainer');
-  container.innerHTML = '';
-}
+function startNanopay() { /* removed */ }
+function closeNanopay() { }
+function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
 
 /* =================================================================
    INIT
