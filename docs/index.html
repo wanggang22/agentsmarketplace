@@ -1012,9 +1012,12 @@ nav{display:flex;align-items:center;gap:8px}
 
     <!-- Step 3: Env vars -->
     <div style="background:rgba(99,102,241,.08);border:1px solid rgba(99,102,241,.2);border-radius:var(--radius-sm);padding:20px;margin-bottom:16px;font-size:.85rem;color:var(--text-secondary);line-height:1.8">
-      <strong style="color:var(--text-primary);font-size:.95rem">Step 3: Deploy &amp; set environment variables</strong><br>
-      Deploy the downloaded <code>agent-server.mjs</code> to <a href="https://railway.app" target="_blank" rel="noopener" style="color:var(--accent)">Railway</a>, <a href="https://vercel.com" target="_blank" rel="noopener" style="color:var(--accent)">Vercel</a>, or any cloud. Then set these env vars:<br>
-      <code style="display:block;background:var(--bg-primary);padding:12px;border-radius:6px;margin:8px 0;font-size:.8rem;line-height:1.6">AGENT_PK=your_wallet_private_key &nbsp;&nbsp;&nbsp;# Required<br>OKX_API_KEY=your_okx_api_key &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;# Required (x402)<br>OKX_SECRET_KEY=your_okx_secret &nbsp;&nbsp;&nbsp;&nbsp;# Required (x402)<br>OKX_PASSPHRASE=your_okx_passphrase &nbsp;# Required (x402)<br>ANTHROPIC_API_KEY=your_ai_key &nbsp;&nbsp;&nbsp;&nbsp;# Optional (Claude/OpenAI/any AI)</code>
+      <strong style="color:var(--text-primary);font-size:.95rem">Step 3: Deploy &amp; set environment variables</strong><br><br>
+      <strong>Downloaded 3 files:</strong> <code>agent-server.mjs</code> + <code>package.json</code> + <code>Dockerfile</code><br><br>
+      <strong style="color:var(--accent)">Option A: Deploy to <a href="https://railway.app" target="_blank" rel="noopener" style="color:var(--accent)">Railway</a> (recommended, easiest)</strong><br>
+      <code style="display:block;background:var(--bg-primary);padding:12px;border-radius:6px;margin:8px 0;font-size:.8rem;line-height:1.8">1. Create a GitHub repo, push the 3 downloaded files to it<br>2. Go to <a href="https://railway.app" target="_blank" rel="noopener" style="color:var(--accent)">railway.app</a> &rarr; New Project &rarr; Deploy from GitHub repo<br>3. In Railway dashboard &rarr; Variables &rarr; Add these environment variables:<br>&nbsp;&nbsp; AGENT_PK=your_wallet_private_key<br>&nbsp;&nbsp; OKX_API_KEY=your_okx_api_key<br>&nbsp;&nbsp; OKX_SECRET_KEY=your_okx_secret<br>&nbsp;&nbsp; OKX_PASSPHRASE=your_okx_passphrase<br>&nbsp;&nbsp; ANTHROPIC_API_KEY=your_ai_key (optional)<br>4. Railway auto-deploys &rarr; copy your URL (e.g. https://xxx.railway.app)</code>
+      <strong style="color:var(--accent)">Option B: Run locally for testing</strong><br>
+      <code style="display:block;background:var(--bg-primary);padding:12px;border-radius:6px;margin:8px 0;font-size:.8rem;line-height:1.8">1. Put the 3 files in a folder<br>2. Run: npm install<br>3. Set env vars and run: node agent-server.mjs<br>4. Test at http://localhost:3080/api</code>
     </div>
 
     <!-- Step 4: Register -->
@@ -2204,15 +2207,39 @@ app.get('/status', (_req, res) => { res.json({ agent: state.agentName, address: 
 app.listen(PORT, () => { console.log('Agent server running on port ' + PORT); log('x402: ' + (hasOkxKeys ? 'OKX Facilitator (zero gas)' : 'NOT CONFIGURED')); log('AI: ' + (claude ? 'Claude' : 'NOT CONFIGURED')); });
 `;
 
-  // Download
-  const blob = new Blob([code], { type: 'text/javascript' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'agent-server.mjs';
-  a.click();
-  URL.revokeObjectURL(url);
-  showToast('agent-server.mjs downloaded! Deploy it to any cloud platform.', 'success');
+  // Generate package.json
+  const pkgJson = JSON.stringify({
+    name: 'my-agent',
+    version: '1.0.0',
+    type: 'module',
+    scripts: { start: 'node agent-server.mjs' },
+    dependencies: { '@anthropic-ai/sdk': '^0.80.0', express: '^5.2.1', viem: '^2.47.6' }
+  }, null, 2);
+
+  // Generate Dockerfile
+  const dockerfile = `FROM node:20-slim
+WORKDIR /app
+COPY package.json ./
+RUN npm install --omit=dev
+COPY agent-server.mjs ./
+EXPOSE 3080
+CMD ["node", "agent-server.mjs"]
+`;
+
+  // Download all files
+  function downloadFile(content, filename, type) {
+    const blob = new Blob([content], { type });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename; a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  downloadFile(code, 'agent-server.mjs', 'text/javascript');
+  setTimeout(() => downloadFile(pkgJson, 'package.json', 'application/json'), 300);
+  setTimeout(() => downloadFile(dockerfile, 'Dockerfile', 'text/plain'), 600);
+
+  showToast('3 files downloaded: agent-server.mjs + package.json + Dockerfile', 'success');
 }
 
 // Init service rows when register section is shown
