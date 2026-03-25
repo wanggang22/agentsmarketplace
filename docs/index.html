@@ -1976,7 +1976,8 @@ async function executeX402(baseUrl, path, epId, payTo, usdcAddr, amountRaw) {
       const txLink = txHash ? '<br><a href="https://www.okx.com/web3/explorer/xlayer/tx/' + txHash + '" target="_blank" rel="noopener" style="color:var(--success);font-size:.8rem">View transaction on explorer</a>' : '';
 
       let resultText = '';
-      if (data.analysis) resultText = data.analysis;
+      if (data.answer) resultText = data.answer;
+      else if (data.analysis) resultText = data.analysis;
       else if (data.result) resultText = typeof data.result === 'string' ? data.result : JSON.stringify(data.result, null, 2);
       else if (data.audit) resultText = data.audit;
       else resultText = JSON.stringify(data, null, 2);
