@@ -1869,6 +1869,12 @@ async function executeX402(baseUrl, path, epId, payTo, usdcAddr, amountRaw) {
     return;
   }
 
+  if (!query.trim()) {
+    showToast('Please enter your question or query first', 'error');
+    if (input) input.focus();
+    return;
+  }
+
   resultDiv.style.display = 'block';
   resultDiv.innerHTML = '<span style="color:var(--accent)">Signing payment...</span>';
 
