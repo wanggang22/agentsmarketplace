@@ -1881,7 +1881,8 @@ async function executeX402(baseUrl, path, epId, payTo, usdcAddr, amountRaw) {
   try {
     // Build query params based on path
     let queryParams = '';
-    if (path.includes('analyze')) queryParams = '?q=' + encodeURIComponent(query || 'BTC');
+    if (path.includes('ask')) queryParams = '?q=' + encodeURIComponent(query);
+    else if (path.includes('analyze')) queryParams = '?q=' + encodeURIComponent(query || 'BTC');
     else if (path.includes('translate')) queryParams = '?text=' + encodeURIComponent(query || 'Hello') + '&to=zh';
     else if (path.includes('audit')) queryParams = '?contract=' + encodeURIComponent(query || '0x0');
     else if (path.includes('signal')) queryParams = '?chain=' + encodeURIComponent(query || '1');
