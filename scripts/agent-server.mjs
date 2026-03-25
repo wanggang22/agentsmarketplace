@@ -655,14 +655,15 @@ app.get('/api/analyze', x402Guard('/api/analyze'), async (req, res) => {
 // /api/translate — Real AI translation via Claude
 app.get('/api/translate', x402Guard('/api/translate'), async (req, res) => {
   const text = req.query.text || 'Hello world';
-  const to = req.query.to || 'es';
-  const langMap = { es: 'Spanish', zh: 'Chinese', ja: 'Japanese', ko: 'Korean', fr: 'French', de: 'German', pt: 'Portuguese', ru: 'Russian', ar: 'Arabic' };
+  const to = req.query.to || 'auto';
+  const langMap = { es: 'Spanish', zh: 'Chinese', ja: 'Japanese', ko: 'Korean', fr: 'French', de: 'German', pt: 'Portuguese', ru: 'Russian', ar: 'Arabic', auto: null };
   const targetLang = langMap[to] || to;
-  log(`/api/translate: "${text}" → ${targetLang}`);
+  const targetInstruction = targetLang ? `Translate to ${targetLang}` : 'Detect the source language and translate to the opposite (if Chinese→English, if English→Chinese, etc.)';
+  log(`/api/translate: "${text}" → ${targetLang || 'auto'}`);
 
   const result = await askClaude(
-    'You are a professional translator AI agent. Return ONLY the translated text, nothing else. No quotes, no explanation.',
-    `Translate the following text to ${targetLang}:\n\n${text}`
+    'You are a professional translator AI agent. Return ONLY the translated text, nothing else. No quotes, no explanation. Reply in the same language as the user query when explaining.',
+    `${targetInstruction}:\n\n${text}`
   );
 
   const response = {
