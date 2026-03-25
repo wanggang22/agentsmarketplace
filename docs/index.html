@@ -1999,6 +1999,24 @@ async function registerAgent() {
 
   if (!name) { showToast('Agent name is required', 'error'); return; }
   if (!endpoint) { showToast('Endpoint URL is required', 'error'); return; }
+  if (!endpoint.startsWith('http')) { showToast('Endpoint URL must start with http:// or https://', 'error'); return; }
+
+  // Verify endpoint is live and has /api
+  try {
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> Verifying endpoint...';
+    const apiUrl = endpoint.replace(/\/$/, '') + '/api';
+    const checkResp = await fetch(apiUrl);
+    const checkData = await checkResp.json();
+    if (!checkData.endpoints || checkData.endpoints.length === 0) {
+      showToast('Endpoint reachable but GET /api returned no services. Add x402 services to your agent-server first.', 'error');
+      btn.disabled = false; btn.textContent = 'Register Agent'; return;
+    }
+    showToast('Endpoint verified: ' + checkData.endpoints.length + ' services found', 'success');
+  } catch (e) {
+    showToast('Cannot reach ' + endpoint + '/api — make sure your agent server is deployed and running', 'error');
+    btn.disabled = false; btn.textContent = 'Register Agent'; return;
+  }
 
   const price = Math.round(parseFloat(priceStr || '0') * 1e6);
   const tags = tagsStr ? tagsStr.split(',').map(t => t.trim()).filter(t => t.length > 0) : [];
