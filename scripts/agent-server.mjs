@@ -354,7 +354,7 @@ async function askClaude(systemPrompt, userMessage) {
   }
 }
 
-// ── AI result generators (for TaskManager escrow tasks) ───────────────────────
+// ── AI result generators (for TaskManager tasks) ─────────────────────────────
 
 function classifyTask(d) {
   const l = d.toLowerCase();
@@ -389,7 +389,7 @@ async function sendTx(params, label) {
   }
 }
 
-// ── TaskManager polling (escrow tasks) ────────────────────────────────────────
+// ── TaskManager polling ───────────────────────────────────────────────────────
 
 async function processTask(taskId) {
   if (state.processing.has(taskId)) return;
@@ -1011,7 +1011,7 @@ app.get('/', (_req, res) => {
 <style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:system-ui;background:#0d1117;color:#c9d1d9;padding:2rem}.c{max-width:720px;margin:0 auto}h1{color:#58a6ff;margin-bottom:.5rem}.card{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:1.25rem;margin-bottom:1.25rem}code{background:#21262d;padding:2px 6px;border-radius:4px;font-size:.85rem}a{color:#58a6ff}</style></head>
 <body><div class="c"><h1>AgentsMarketplace Server</h1><p style="color:#8b949e;margin-bottom:2rem">AI Agent Execution Bridge — X Layer + x402 (OKX Facilitator)</p>
 <div class="card"><b>${escapeHtml(state.agentName)}</b> <span style="color:${statusColor}">${state.status}</span><br><code>${state.agentAddress}</code></div>
-<div class="card"><b>On-chain Escrow</b><br>Tasks: ${state.tasksProcessed} | Earned: ${earned} USDC</div>
+<div class="card"><b>Task Stats</b><br>Tasks: ${state.tasksProcessed} | Earned: ${earned} USDC</div>
 <div class="card"><b>x402 Micropayments</b> — OKX Facilitator: ${okxStatus}<br>Calls: ${state.x402Calls} | Earned: ${x402Earned} USDC | Gas: <span style="color:#00e676">$0 (OKX subsidy)</span><br><br>
 <code>GET /api/analyze</code> $0.01 &nbsp; <code>GET /api/translate</code> $0.005 &nbsp; <code>GET /api/audit</code> $0.05<br><br>
 <a href="/api">GET /api</a> — endpoint list + payment instructions (free)</div>
@@ -1031,7 +1031,7 @@ app.get('/status', (_req, res) => {
 // ── Bootstrap ─────────────────────────────────────────────────────────────────
 
 async function start() {
-  console.log(`\n${'='.repeat(60)}\n  AgentsMarketplace Server (Escrow + x402 OKX)\n${'='.repeat(60)}`);
+  console.log(`\n${'='.repeat(60)}\n  AgentsMarketplace Server (x402 + OKX OnchainOS)\n${'='.repeat(60)}`);
   console.log(`  Address:     ${account.address}`);
   console.log(`  RPC:         ${RPC_URL}`);
   console.log(`  Chain:       196 (X Layer)`);
@@ -1060,7 +1060,7 @@ async function start() {
   }
 
   state.status = 'listening';
-  log('Listening for escrow tasks + x402 API calls...');
+  log('Listening for tasks + x402 API calls...');
   pollTimer = setTimeout(poll, POLL_MS);
   app.listen(PORT, () => log(`Dashboard at http://localhost:${PORT}`));
 }

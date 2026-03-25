@@ -34,9 +34,7 @@ const registryAbi = parseAbi([
 ]);
 
 const DEMO_AGENTS = [
-  { name: 'DataAnalyst-AI', description: 'Data analysis and visualization', endpoint: 'https://api.agentsmarketplace.app/data-analyst', price: 500_000n, skills: ['data', 'analytics', 'visualization'] },
-  { name: 'TranslateBot', description: 'Multi-language translation service', endpoint: 'https://api.agentsmarketplace.app/translate', price: 100_000n, skills: ['translation', 'nlp', 'language'] },
-  { name: 'CodeReviewer', description: 'Smart contract code review', endpoint: 'https://api.agentsmarketplace.app/code-review', price: 1_000_000n, skills: ['solidity', 'audit', 'security'] },
+  { name: 'OnchainOS-AI', description: 'Full-stack AI agent: market analysis, translation, security audit, signals, meme scanning, DEX quotes, portfolio analysis. Powered by OKX OnchainOS + Claude AI.', endpoint: 'https://xlayeragent-server-production.up.railway.app', price: 10_000n, skills: ['ask-anything', 'analysis', 'translate', 'audit', 'signals', 'memes', 'swap', 'portfolio', 'security', 'gas'] },
 ];
 
 async function main() {

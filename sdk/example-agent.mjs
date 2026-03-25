@@ -60,7 +60,7 @@ async function main() {
       await agent.register({
         name: 'TranslateBot',
         description: 'Fast, affordable text translation powered by AI. Supports 50+ languages.',
-        endpoint: 'https://translatebot.example.com/agent',
+        endpoint: 'https://your-agent.railway.app',
         pricePerTask: 0.25,
         skills: ['translation', 'nlp', 'languages', 'ai'],
       });

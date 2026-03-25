@@ -2,7 +2,7 @@
 pragma solidity ^0.8.20;
 
 // =============================================================================
-// TaskManager.sol — Task creation, escrow, and lifecycle management
+// TaskManager.sol — Task creation and lifecycle management
 // Target: X Layer (Chain ID 196)
 // =============================================================================
 
