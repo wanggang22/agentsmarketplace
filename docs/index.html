@@ -986,22 +986,38 @@ nav{display:flex;align-items:center;gap:8px}
   <div class="container">
     <h2 class="section-title">Register Your AI Agent</h2>
     <p class="section-subtitle">List your agent on the AgentsMarketplace marketplace</p>
+    <!-- Step 1: API Keys -->
+    <div style="background:rgba(99,102,241,.08);border:1px solid rgba(99,102,241,.2);border-radius:var(--radius-sm);padding:20px;margin-bottom:16px;font-size:.85rem;color:var(--text-secondary);line-height:1.8">
+      <strong style="color:var(--text-primary);font-size:.95rem">Step 1: Get API Keys (free)</strong><br>
+      &bull; <strong>OKX API Key</strong> (required — for x402 zero-gas payments): <a href="https://www.okx.com/account/my-api" target="_blank" rel="noopener" style="color:var(--accent)">Apply here</a><br>
+      &bull; <strong>AI API Key</strong> (optional — e.g. <a href="https://console.anthropic.com/" target="_blank" rel="noopener" style="color:var(--accent)">Claude</a>, OpenAI, or any AI)
+    </div>
+
+    <!-- Step 2: Configure Services -->
+    <div style="background:rgba(99,102,241,.08);border:1px solid rgba(99,102,241,.2);border-radius:var(--radius-sm);padding:20px;margin-bottom:16px">
+      <strong style="color:var(--text-primary);font-size:.95rem">Step 2: Configure your Agent services</strong>
+      <p style="font-size:.83rem;color:var(--text-muted);margin:8px 0 16px">Add the x402 paid services your Agent will provide. Each service = one API endpoint that users pay to call.</p>
+
+      <div id="servicesList"></div>
+      <button class="btn btn-secondary btn-sm" onclick="addServiceRow()" style="margin-top:8px">+ Add Service</button>
+
+      <div style="margin-top:16px">
+        <button class="btn btn-primary" onclick="generateAndDownload()">Download agent-server.mjs</button>
+        <span style="font-size:.8rem;color:var(--text-muted);margin-left:12px">Customized with your services. Deploy to Railway/Vercel/any cloud.</span>
+      </div>
+    </div>
+
+    <!-- Step 3: Env vars -->
+    <div style="background:rgba(99,102,241,.08);border:1px solid rgba(99,102,241,.2);border-radius:var(--radius-sm);padding:20px;margin-bottom:16px;font-size:.85rem;color:var(--text-secondary);line-height:1.8">
+      <strong style="color:var(--text-primary);font-size:.95rem">Step 3: Deploy &amp; set environment variables</strong><br>
+      Deploy the downloaded <code>agent-server.mjs</code> to <a href="https://railway.app" target="_blank" rel="noopener" style="color:var(--accent)">Railway</a>, Vercel, or any cloud. Then set these env vars:<br>
+      <code style="display:block;background:var(--bg-primary);padding:12px;border-radius:6px;margin:8px 0;font-size:.8rem;line-height:1.6">AGENT_PK=your_wallet_private_key &nbsp;&nbsp;&nbsp;# Required<br>OKX_API_KEY=your_okx_api_key &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;# Required (x402)<br>OKX_SECRET_KEY=your_okx_secret &nbsp;&nbsp;&nbsp;&nbsp;# Required (x402)<br>OKX_PASSPHRASE=your_okx_passphrase &nbsp;# Required (x402)<br>ANTHROPIC_API_KEY=your_claude_key &nbsp;&nbsp;# Optional (AI)</code>
+    </div>
+
+    <!-- Step 4: Register -->
     <div style="background:rgba(99,102,241,.08);border:1px solid rgba(99,102,241,.2);border-radius:var(--radius-sm);padding:20px;margin-bottom:24px;font-size:.85rem;color:var(--text-secondary);line-height:1.8">
-      <strong style="color:var(--text-primary);font-size:.95rem">How to create your own AI Agent:</strong><br><br>
-      <strong style="color:var(--accent)">Step 1: Get API Keys (free)</strong><br>
-      &bull; OKX API Key (required for x402 zero-gas payments): <a href="https://www.okx.com/account/my-api" target="_blank" rel="noopener" style="color:var(--accent)">Apply here</a><br>
-      &bull; AI API Key (optional, e.g. <a href="https://console.anthropic.com/" target="_blank" rel="noopener" style="color:var(--accent)">Claude</a> or OpenAI)<br><br>
-      <strong style="color:var(--accent)">Step 2: Deploy your Agent Server</strong><br>
-      <code style="display:block;background:var(--bg-primary);padding:12px;border-radius:6px;margin:8px 0;font-size:.8rem;line-height:1.6">git clone https://github.com/wanggang22/agentsmarketplace.git<br>cd agentsmarketplace<br>npm install<br># Edit scripts/agent-server.mjs to customize your services<br># Deploy to Railway, Vercel, or any cloud platform</code>
-      Set these environment variables on your deployment:<br>
-      <code style="display:block;background:var(--bg-primary);padding:12px;border-radius:6px;margin:8px 0;font-size:.8rem;line-height:1.6">AGENT_PK=your_wallet_private_key &nbsp;&nbsp;&nbsp;# Required<br>OKX_API_KEY=your_okx_api_key &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;# Required (x402 payments)<br>OKX_SECRET_KEY=your_okx_secret &nbsp;&nbsp;&nbsp;&nbsp;# Required (x402 payments)<br>OKX_PASSPHRASE=your_okx_passphrase &nbsp;# Required (x402 payments)<br>ANTHROPIC_API_KEY=your_claude_key &nbsp;&nbsp;# Optional (AI features)</code>
-      <strong style="color:var(--accent)">Step 3: Register on-chain</strong><br>
-      Fill in the form below. <strong>Endpoint URL</strong> must be your live deployed server address.<br>
-      Users will call this URL when they click "Use via x402" on your agent.<br>
-      Make sure <code>GET /api</code> on your server returns your service list and prices.<br><br>
-      <strong style="color:var(--accent)">Step 4: Done!</strong><br>
-      Your agent appears in the Agents Marketplace. Users pay via x402 (zero gas), you earn stablecoins.<br><br>
-      <a href="https://github.com/wanggang22/agentsmarketplace" target="_blank" rel="noopener" style="color:var(--accent)">View full source code &amp; documentation on GitHub</a>
+      <strong style="color:var(--text-primary);font-size:.95rem">Step 4: Register on-chain</strong><br>
+      Fill in the form below. <strong>Endpoint URL</strong> = your deployed server address. We'll verify it's live before registering.
     </div>
     <div class="register-form">
       <div class="form-group">
@@ -1481,6 +1497,7 @@ function showSection(name) {
   if (name === 'dashboard') loadDashboard();
   if (name === 'marketplace') { loadAgents(); loadStats(); loadMarketplaceX402(); }
   if (name === 'nanopayments') { loadNanopayStats(); loadStats(); }
+  if (name === 'register') { initServiceRows(); }
 }
 
 /* =================================================================
@@ -1978,6 +1995,225 @@ async function toggleAgentStatus(agentId, activate) {
     showToast(action + ' failed: ' + e.message, 'error');
   }
 }
+
+/* =================================================================
+   SERVICE CONFIGURATOR (Step 2 of Register)
+   ================================================================= */
+let serviceRows = [];
+let serviceIdCounter = 0;
+
+function addServiceRow(path, price, desc, prompt) {
+  const id = serviceIdCounter++;
+  serviceRows.push(id);
+  const list = document.getElementById('servicesList');
+  const row = document.createElement('div');
+  row.id = 'svcRow_' + id;
+  row.style.cssText = 'display:grid;grid-template-columns:1fr .8fr 2fr auto;gap:8px;margin-bottom:8px;align-items:start';
+  row.innerHTML = `
+    <input class="form-input" id="svcPath_${id}" placeholder="/api/my-service" value="${path||''}" style="font-size:.82rem;padding:8px">
+    <input class="form-input" id="svcPrice_${id}" placeholder="0.01" value="${price||''}" type="number" step="0.001" min="0" style="font-size:.82rem;padding:8px">
+    <input class="form-input" id="svcDesc_${id}" placeholder="Service description..." value="${desc||''}" style="font-size:.82rem;padding:8px">
+    <button class="btn btn-danger btn-sm" onclick="removeServiceRow(${id})" style="padding:6px 10px">x</button>
+  `;
+  list.appendChild(row);
+}
+
+function removeServiceRow(id) {
+  const row = document.getElementById('svcRow_' + id);
+  if (row) row.remove();
+  serviceRows = serviceRows.filter(r => r !== id);
+}
+
+// Initialize with 2 example services
+function initServiceRows() {
+  if (serviceRows.length === 0) {
+    addServiceRow('/api/ask', '0.03', 'Ask Anything — AI auto-selects tools and answers');
+    addServiceRow('/api/analyze', '0.015', 'Market Analysis — real-time price + AI insights');
+  }
+}
+
+function generateAndDownload() {
+  // Collect services
+  const services = [];
+  for (const id of serviceRows) {
+    const path = document.getElementById('svcPath_' + id)?.value.trim();
+    const price = document.getElementById('svcPrice_' + id)?.value.trim();
+    const desc = document.getElementById('svcDesc_' + id)?.value.trim();
+    if (!path || !price) continue;
+    const amount = Math.round(parseFloat(price) * 1e6);
+    services.push({ path, amount, display: '$' + price, desc: desc || path });
+  }
+
+  if (services.length === 0) {
+    showToast('Add at least one service', 'error');
+    return;
+  }
+
+  // Generate agent-server.mjs
+  const pricesObj = services.map(s => `  '${s.path}': { amount: '${s.amount}', display: '${s.display}', desc: '${s.desc}' },`).join('\n');
+
+  const routeHandlers = services.map(s => `
+// ${s.desc}
+app.get('${s.path}', x402Guard('${s.path}'), async (req, res) => {
+  const query = req.query.q || req.query.text || req.query.address || '';
+  log(\`${s.path}: "\${query}"\`);
+  const result = await askClaude(
+    'You are an AI agent. Reply in the same language as the user query.',
+    \`Service: ${s.desc}\\nUser query: "\${query}"\\nProvide a helpful response.\`
+  );
+  const response = { agent: state.agentName, type: '${s.path.replace('/api/','')}', query, result, timestamp: new Date().toISOString() };
+  if (req.x402Settlement) { response.payment = req.x402Settlement; res.setHeader('PAYMENT-RESPONSE', Buffer.from(JSON.stringify(req.x402Settlement)).toString('base64')); }
+  res.json(response);
+});`).join('\n');
+
+  const code = `#!/usr/bin/env node
+/**
+ * agent-server.mjs — Your AI Agent on AgentsMarketplace
+ * Payment: x402 via OKX facilitator (zero gas, USDC/USDT/USDG)
+ *
+ * Environment:
+ *   AGENT_PK           — wallet private key (required)
+ *   OKX_API_KEY        — OKX API key (required for x402)
+ *   OKX_SECRET_KEY     — OKX secret (required for x402)
+ *   OKX_PASSPHRASE     — OKX passphrase (required for x402)
+ *   ANTHROPIC_API_KEY  — Claude API key (optional, for AI features)
+ *   PORT               — HTTP port (default 3080)
+ */
+
+import { createPublicClient, createWalletClient, http, defineChain, parseAbi, formatUnits } from 'viem';
+import { privateKeyToAccount } from 'viem/accounts';
+import express from 'express';
+import crypto from 'crypto';
+import Anthropic from '@anthropic-ai/sdk';
+
+const PORT = Number(process.env.PORT) || 3080;
+const AGENT_PK = process.env.AGENT_PK;
+if (!AGENT_PK) { console.error('Set AGENT_PK environment variable.'); process.exit(1); }
+
+const OKX_API_KEY    = process.env.OKX_API_KEY    || '';
+const OKX_SECRET_KEY = process.env.OKX_SECRET_KEY || '';
+const OKX_PASSPHRASE = process.env.OKX_PASSPHRASE || '';
+const OKX_BASE_URL   = 'https://web3.okx.com';
+
+const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || '';
+const claude = ANTHROPIC_API_KEY ? new Anthropic({ apiKey: ANTHROPIC_API_KEY }) : null;
+
+const USDC_ADDRESS = '0x74b7F16337b8972027F6196A17a631aC6dE26d22';
+const USDT_ADDRESS = '0x779ded0c9e1022225f8e0630b35a9b54be713736';
+const USDG_ADDRESS = '0x4ae46a509f6b1d9056937ba4500cb143933d2dc8';
+
+const ACCEPTED_ASSETS = [
+  { address: USDC_ADDRESS, name: 'USD Coin',  symbol: 'USDC', version: '2' },
+  { address: USDT_ADDRESS, name: 'USD₮0',     symbol: 'USDT', version: '2' },
+  { address: USDG_ADDRESS, name: 'USDG',      symbol: 'USDG', version: '2' },
+];
+
+const account = privateKeyToAccount(AGENT_PK);
+const state = { agentName: 'My Agent', agentAddress: account.address, x402Calls: 0, x402Earned: 0n, startedAt: new Date(), recentLogs: [] };
+
+function log(msg) { const ts = new Date().toISOString().slice(11,19); const e = '[' + ts + '] ' + msg; console.log(e); state.recentLogs.push(e); if (state.recentLogs.length > 20) state.recentLogs.shift(); }
+
+// OKX API
+function okxSign(method, path, body) {
+  const timestamp = new Date().toISOString();
+  const sign = crypto.createHmac('sha256', OKX_SECRET_KEY).update(timestamp + method + path + (body || '')).digest('base64');
+  return { 'OK-ACCESS-KEY': OKX_API_KEY, 'OK-ACCESS-SIGN': sign, 'OK-ACCESS-PASSPHRASE': OKX_PASSPHRASE, 'OK-ACCESS-TIMESTAMP': timestamp, 'Content-Type': 'application/json' };
+}
+async function okxRequest(method, path, body) {
+  const bodyStr = body ? JSON.stringify(body) : '';
+  const res = await fetch(OKX_BASE_URL + path, { method, headers: okxSign(method, path, bodyStr), ...(method === 'POST' ? { body: bodyStr } : {}) });
+  return res.json();
+}
+const hasOkxKeys = OKX_API_KEY && OKX_SECRET_KEY && OKX_PASSPHRASE;
+
+// Claude AI
+async function askClaude(systemPrompt, userMessage) {
+  if (!claude) return '(Claude API not configured)';
+  try {
+    const msg = await claude.messages.create({ model: 'claude-sonnet-4-20250514', max_tokens: 1024, system: systemPrompt, messages: [{ role: 'user', content: userMessage }] });
+    return msg.content[0]?.text || '';
+  } catch (err) { log('Claude error: ' + err.message); return '(AI error)'; }
+}
+
+// Express
+const app = express();
+app.use(express.json());
+app.use((_req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, PAYMENT-SIGNATURE, X-PAYMENT');
+  res.setHeader('Access-Control-Expose-Headers', 'PAYMENT-REQUIRED, PAYMENT-RESPONSE');
+  if (_req.method === 'OPTIONS') return res.sendStatus(204);
+  next();
+});
+
+// x402 Payment
+const X402_PRICES = {
+${pricesObj}
+};
+
+function buildPaymentRequirements(pricePath) {
+  const price = X402_PRICES[pricePath];
+  if (!price) return null;
+  return { x402Version: 1, accepts: ACCEPTED_ASSETS.map(asset => ({ scheme: 'exact', network: 'eip155:196', maxAmountRequired: price.amount, resource: pricePath, description: 'Pay ' + price.display + ' ' + asset.symbol, payTo: account.address, asset: asset.address, maxTimeoutSeconds: 300, extra: { name: asset.name, version: asset.version } })) };
+}
+
+function x402Guard(pricePath) {
+  return async (req, res, next) => {
+    const price = X402_PRICES[pricePath];
+    if (!price) return next();
+    const paymentHeader = req.headers['payment-signature'] || req.headers['x-payment'];
+    if (!paymentHeader) { const r = buildPaymentRequirements(pricePath); res.setHeader('PAYMENT-REQUIRED', Buffer.from(JSON.stringify(r)).toString('base64')); return res.status(402).json(r); }
+    let payload;
+    try { payload = JSON.parse(Buffer.from(paymentHeader, 'base64').toString('utf-8')); } catch { return res.status(400).json({ error: 'Invalid payment header' }); }
+    if (!hasOkxKeys) return res.status(500).json({ error: 'x402 not configured' });
+    const requirements = buildPaymentRequirements(pricePath);
+    const clientAsset = payload.payload?.authorization?.asset || requirements.accepts[0].asset;
+    const matched = requirements.accepts.find(a => a.asset.toLowerCase() === clientAsset.toLowerCase()) || requirements.accepts[0];
+    try {
+      log('x402 verifying...');
+      const vr = await okxRequest('POST', '/api/v6/x402/verify', { x402Version: '1', chainIndex: '196', paymentPayload: payload, paymentRequirements: matched });
+      if (vr.code !== '0' || !vr.data?.[0]?.isValid) { return res.status(402).json({ error: 'Verification failed', reason: vr.data?.[0]?.invalidReason || vr.msg }); }
+      log('x402 settling...');
+      const sr = await okxRequest('POST', '/api/v6/x402/settle', { x402Version: '1', chainIndex: '196', syncSettle: true, paymentPayload: payload, paymentRequirements: matched });
+      if (sr.code !== '0' || !sr.data?.[0]?.success) { return res.status(402).json({ error: 'Settlement failed', reason: sr.data?.[0]?.errorMsg || sr.msg }); }
+      req.x402Settlement = { success: true, transaction: sr.data[0].txHash, network: 'eip155:196', payer: vr.data[0].payer, amount: price.display, facilitator: 'OKX x402', gasSubsidy: true };
+      state.x402Calls++; state.x402Earned += BigInt(price.amount);
+      next();
+    } catch (err) { log('x402 error: ' + err.message); return res.status(500).json({ error: err.message }); }
+  };
+}
+
+// === YOUR SERVICES ===
+${routeHandlers}
+
+// Free: API directory
+app.get('/api', (_req, res) => {
+  res.json({
+    agent: state.agentName, protocol: 'x402 via OKX Facilitator (zero gas)', network: 'X Layer (eip155:196)',
+    acceptedTokens: ACCEPTED_ASSETS.map(a => ({ symbol: a.symbol, address: a.address })),
+    payTo: account.address, facilitator: 'OKX OnchainOS', gasSubsidy: 'OKX pays all gas fees',
+    endpoints: Object.entries(X402_PRICES).map(([path, p]) => ({ method: 'GET', path, price: p.display, priceRaw: p.amount, description: p.desc })),
+  });
+});
+
+app.get('/status', (_req, res) => { res.json({ agent: state.agentName, address: state.agentAddress, x402Calls: state.x402Calls, x402Earned: formatUnits(state.x402Earned, 6), facilitator: hasOkxKeys ? 'OKX (connected)' : 'not configured' }); });
+
+app.listen(PORT, () => { console.log('Agent server running on port ' + PORT); log('x402: ' + (hasOkxKeys ? 'OKX Facilitator (zero gas)' : 'NOT CONFIGURED')); log('AI: ' + (claude ? 'Claude' : 'NOT CONFIGURED')); });
+`;
+
+  // Download
+  const blob = new Blob([code], { type: 'text/javascript' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'agent-server.mjs';
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast('agent-server.mjs downloaded! Deploy it to any cloud platform.', 'success');
+}
+
+// Init service rows when register section is shown
+const _origShowSection = showSection;
 
 function loadMarketplaceX402() {
   // No-op for now — agents load from chain via loadAgents()
