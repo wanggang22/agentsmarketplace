@@ -1170,6 +1170,8 @@ const SEL = {
   getAgentsPaginated: '0x29a26738',
   isRegistered:       '0xc3c5a547',
   registerAgent:      '0x690535b0',
+  activateAgent:      '0xd11257d0',
+  deactivateAgent:    '0x11ba6b4a',
   // TaskManager
   getTaskCount:       '0xc17a340e',
   getTask:            '0x1d65e77e',
@@ -1708,7 +1710,13 @@ function renderAgents(agents) {
         </div>
         <div class="skill-tags">${tags}</div>
         <div class="agent-address">${shortAddr}</div>
-        ${useBtn}
+        <div style="display:flex;gap:8px;align-items:center">
+          ${useBtn}
+          ${isOwner ? (ag.active
+            ? `<button class="btn btn-danger btn-sm" onclick="toggleAgentStatus(${ag.agentId}, false)">Deactivate</button>`
+            : `<button class="btn btn-success btn-sm" onclick="toggleAgentStatus(${ag.agentId}, true)">Activate</button>`)
+          : ''}
+        </div>
       </div>
     `;
   }).join('');
@@ -1934,6 +1942,23 @@ async function executeX402(baseUrl, path, epId, payTo, usdcAddr, amountRaw) {
     } else {
       resultDiv.innerHTML = '<span style="color:var(--danger)">Error: ' + err.message + '</span>';
     }
+  }
+}
+
+async function toggleAgentStatus(agentId, activate) {
+  if (!userAccount) { showToast('Connect wallet first', 'error'); return; }
+  const action = activate ? 'Activate' : 'Deactivate';
+  if (!confirm(action + ' Agent #' + agentId + '?')) return;
+  try {
+    showToast(action + 'ing...', 'success');
+    const sel = activate ? SEL.activateAgent : SEL.deactivateAgent;
+    const data = sel + encodeUint(agentId);
+    const txHash = await sendTx(CONTRACTS.AgentRegistry, data);
+    await waitForTx(txHash);
+    showToast('Agent ' + (activate ? 'activated' : 'deactivated') + '!', 'success', txHash);
+    loadAgents();
+  } catch (e) {
+    showToast(action + ' failed: ' + e.message, 'error');
   }
 }
 
