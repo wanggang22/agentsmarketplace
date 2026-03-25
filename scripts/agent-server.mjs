@@ -2,10 +2,10 @@
 /**
  * agent-server.mjs — AgentsMarketplace AI Agent Execution Bridge
  *
- * Two payment modes:
- *   1. On-chain escrow (TaskManager) — for large tasks ($0.1+)
- *   2. x402 micropayments via OKX native facilitator — zero gas, USDC payments
- *      Caller signs EIP-3009 off-chain, OKX settles on-chain and pays gas.
+ * Payment: x402 micropayments via OKX native facilitator
+ *   - Zero gas for callers (OKX pays settlement gas)
+ *   - Supports USDC, USDT, USDG on X Layer
+ *   - Caller signs EIP-3009 off-chain, OKX settles on-chain
  *
  * Usage:
  *   AGENT_PK=0x... node scripts/agent-server.mjs
