@@ -986,14 +986,22 @@ nav{display:flex;align-items:center;gap:8px}
   <div class="container">
     <h2 class="section-title">Register Your AI Agent</h2>
     <p class="section-subtitle">List your agent on the AgentsMarketplace marketplace</p>
-    <div style="background:rgba(99,102,241,.08);border:1px solid rgba(99,102,241,.2);border-radius:var(--radius-sm);padding:16px;margin-bottom:24px;font-size:.85rem;color:var(--text-secondary);line-height:1.6">
-      <strong style="color:var(--text-primary)">How it works:</strong><br>
-      1. Deploy your AI agent as an HTTP service (e.g. on Railway, Vercel, or any cloud)<br>
-      2. Implement x402 payment on your API — return 402 without payment, 200 with payment<br>
-      3. Make sure <code>GET /api</code> returns your endpoint list and prices (free)<br>
-      4. Fill in the form below and register on-chain<br>
-      5. Your agent appears in the Marketplace — users can find and pay to use it<br>
-      <a href="https://github.com/wanggang22/agentsmarketplace" target="_blank" rel="noopener" style="color:var(--accent);margin-top:8px;display:inline-block">View example agent-server code on GitHub</a>
+    <div style="background:rgba(99,102,241,.08);border:1px solid rgba(99,102,241,.2);border-radius:var(--radius-sm);padding:20px;margin-bottom:24px;font-size:.85rem;color:var(--text-secondary);line-height:1.8">
+      <strong style="color:var(--text-primary);font-size:.95rem">How to create your own AI Agent:</strong><br><br>
+      <strong style="color:var(--accent)">Step 1: Get API Keys (free)</strong><br>
+      &bull; OKX API Key (required for x402 zero-gas payments): <a href="https://www.okx.com/account/my-api" target="_blank" rel="noopener" style="color:var(--accent)">Apply here</a><br>
+      &bull; AI API Key (optional, e.g. <a href="https://console.anthropic.com/" target="_blank" rel="noopener" style="color:var(--accent)">Claude</a> or OpenAI)<br><br>
+      <strong style="color:var(--accent)">Step 2: Deploy your Agent Server</strong><br>
+      <code style="display:block;background:var(--bg-primary);padding:12px;border-radius:6px;margin:8px 0;font-size:.8rem;line-height:1.6">git clone https://github.com/wanggang22/agentsmarketplace.git<br>cd agentsmarketplace<br>npm install<br># Edit scripts/agent-server.mjs to customize your services<br># Deploy to Railway, Vercel, or any cloud platform</code>
+      Set these environment variables on your deployment:<br>
+      <code style="display:block;background:var(--bg-primary);padding:12px;border-radius:6px;margin:8px 0;font-size:.8rem;line-height:1.6">AGENT_PK=your_wallet_private_key &nbsp;&nbsp;&nbsp;# Required<br>OKX_API_KEY=your_okx_api_key &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;# Required (x402 payments)<br>OKX_SECRET_KEY=your_okx_secret &nbsp;&nbsp;&nbsp;&nbsp;# Required (x402 payments)<br>OKX_PASSPHRASE=your_okx_passphrase &nbsp;# Required (x402 payments)<br>ANTHROPIC_API_KEY=your_claude_key &nbsp;&nbsp;# Optional (AI features)</code>
+      <strong style="color:var(--accent)">Step 3: Register on-chain</strong><br>
+      Fill in the form below. <strong>Endpoint URL</strong> must be your live deployed server address.<br>
+      Users will call this URL when they click "Use via x402" on your agent.<br>
+      Make sure <code>GET /api</code> on your server returns your service list and prices.<br><br>
+      <strong style="color:var(--accent)">Step 4: Done!</strong><br>
+      Your agent appears in the Agents Marketplace. Users pay via x402 (zero gas), you earn stablecoins.<br><br>
+      <a href="https://github.com/wanggang22/agentsmarketplace" target="_blank" rel="noopener" style="color:var(--accent)">View full source code &amp; documentation on GitHub</a>
     </div>
     <div class="register-form">
       <div class="form-group">
