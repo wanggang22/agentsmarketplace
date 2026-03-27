@@ -1837,6 +1837,7 @@ function showAgentServicesModal(agentName, baseUrl, apiData, agentId) {
           <button class="btn btn-primary btn-sm" onclick="executeX402('${baseUrl}','${ep.path}','${epId}','${payTo}','${usdcAddr}','${ep.priceRaw}',${agentId})">Pay ${ep.price}</button>
         </div>
         <div id="result_${epId}" style="margin-top:10px;display:none;padding:12px;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-sm);font-size:.85rem;color:var(--text-secondary);max-height:300px;overflow-y:auto;white-space:pre-wrap;word-break:break-word"></div>
+        <div id="ratingArea_${epId}" style="margin-top:0"></div>
       </div>
     `;
   }).join('');
@@ -1881,14 +1882,6 @@ function encodeRateCall(agentId, score, comment, txHash) {
   for (const b of commentBytes) strData += b.toString(16).padStart(2, '0');
   strData = strData.padEnd(Math.ceil(strData.length / 64) * 64, '0');
   return sel + agentHex + scoreHex + strOffset + txHashHex + strLen + strData;
-}
-
-function selectStars(btn, score) {
-  const parent = btn.parentElement;
-  parent.querySelectorAll('.star-btn').forEach(function(b, i) {
-    b.style.color = i < score ? '#f59e0b' : 'var(--text-muted)';
-  });
-  btn.closest('.x402-rating').dataset.selectedScore = score;
 }
 
 
@@ -2060,7 +2053,9 @@ async function executeX402(baseUrl, path, epId, payTo, usdcAddr, amountRaw, agen
           if (!ratingState.score) { showToast('Select a star rating first', 'error'); return; }
           submitRating(agentId, ratingState.score, ratingDiv.querySelector('.rating-comment').value, txHash, ratingDiv);
         });
-        resultDiv.appendChild(ratingDiv);
+        var ratingArea = document.getElementById('ratingArea_' + epId);
+        if (ratingArea) { ratingArea.innerHTML = ''; ratingArea.appendChild(ratingDiv); }
+        else resultDiv.appendChild(ratingDiv);
       }
       showToast('x402 payment successful!', 'success');
 
