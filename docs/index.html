@@ -1731,7 +1731,7 @@ function renderAgents(agents) {
     const ownerBadge = isOwner ? '<span style="font-size:.7rem;font-weight:600;color:var(--success);background:rgba(34,197,94,.1);padding:2px 8px;border-radius:10px;border:1px solid rgba(34,197,94,.2)">Your Agent</span>' : '';
 
     const useBtn = ag.endpoint && ag.active
-      ? `<button class="btn btn-primary" onclick="tryX402Agent('${escapeHtml(ag.endpoint)}', '${escapeHtml(ag.name)}')">Use via x402</button>`
+      ? `<button class="btn btn-primary" onclick="tryX402Agent('${escapeHtml(ag.endpoint)}', '${escapeHtml(ag.name)}', ${ag.agentId})">Use via x402</button>`
       : '<button class="btn btn-secondary" disabled>Offline</button>';
 
     return `
@@ -1783,7 +1783,7 @@ function escapeHtml(str) {
 /* =================================================================
    x402 AGENT INTERACTION
    ================================================================= */
-async function tryX402Agent(endpoint, agentName) {
+async function tryX402Agent(endpoint, agentName, agentId) {
   showToast('Connecting to ' + agentName + '...', 'success');
   try {
     // If endpoint doesn't end with /api, try appending it
@@ -1792,7 +1792,7 @@ async function tryX402Agent(endpoint, agentName) {
     const data = await resp.json();
 
     if (data.endpoints && data.endpoints.length > 0) {
-      showAgentServicesModal(agentName, endpoint, data);
+      showAgentServicesModal(agentName, endpoint, data, agentId);
     } else {
       showToast(agentName + ' has no x402 services available', 'error');
     }
@@ -1801,7 +1801,7 @@ async function tryX402Agent(endpoint, agentName) {
   }
 }
 
-function showAgentServicesModal(agentName, baseUrl, apiData) {
+function showAgentServicesModal(agentName, baseUrl, apiData, agentId) {
   const payTo = apiData.payTo || '';
   const usdcAddr = (apiData.acceptedTokens && apiData.acceptedTokens[0]?.address) || '0x74b7F16337b8972027F6196A17a631aC6dE26d22';
 
@@ -1829,7 +1829,7 @@ function showAgentServicesModal(agentName, baseUrl, apiData) {
         </div>
         <div style="display:flex;gap:8px">
           <input class="form-input" id="input_${epId}" type="text" placeholder="${placeholder}" style="flex:1;padding:8px 12px;font-size:.85rem">
-          <button class="btn btn-primary btn-sm" onclick="executeX402('${baseUrl}','${ep.path}','${epId}','${payTo}','${usdcAddr}','${ep.priceRaw}')">Pay ${ep.price}</button>
+          <button class="btn btn-primary btn-sm" onclick="executeX402('${baseUrl}','${ep.path}','${epId}','${payTo}','${usdcAddr}','${ep.priceRaw}',${agentId})">Pay ${ep.price}</button>
         </div>
         <div id="result_${epId}" style="margin-top:10px;display:none;padding:12px;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-sm);font-size:.85rem;color:var(--text-secondary);max-height:300px;overflow-y:auto;white-space:pre-wrap;word-break:break-word"></div>
       </div>
@@ -1858,7 +1858,42 @@ function showAgentServicesModal(agentName, baseUrl, apiData) {
 }
 
 // Execute x402 payment + API call from browser
-async function executeX402(baseUrl, path, epId, payTo, usdcAddr, amountRaw) {
+const X402_RATING_CONTRACT = '0x85Be67F1A3c1f470A6c94b3C77fD326d3c0f1188';
+const X402_RATING_ABI = [{"inputs":[{"internalType":"uint256","name":"agentId","type":"uint256"},{"internalType":"uint8","name":"score","type":"uint8"},{"internalType":"string","name":"comment","type":"string"},{"internalType":"bytes32","name":"txHash","type":"bytes32"}],"name":"rate","outputs":[],"stateMutability":"nonpayable","type":"function"}];
+
+// ABI-encode the rate(uint256,uint8,string,bytes32) call without ethers.js
+function encodeRateCall(agentId, score, comment, txHash) {
+  const sel = '0xa744c3da'; // keccak256("rate(uint256,uint8,string,bytes32)") first 4 bytes
+  const pad = (hex, len) => hex.replace('0x','').padStart(len, '0');
+  const agentHex = pad('0x' + BigInt(agentId).toString(16), 64);
+  const scoreHex = pad('0x' + score.toString(16), 64);
+  const txHashHex = pad(txHash, 64);
+  // string: offset (128 = 4th slot), then length + data
+  const strOffset = pad('0x80', 64); // 128 in hex = 0x80
+  const commentBytes = new TextEncoder().encode(comment);
+  const strLen = pad('0x' + commentBytes.length.toString(16), 64);
+  let strData = '';
+  for (const b of commentBytes) strData += b.toString(16).padStart(2, '0');
+  strData = strData.padEnd(Math.ceil(strData.length / 64) * 64, '0');
+  return sel + agentHex + scoreHex + strOffset + txHashHex + strLen + strData;
+}
+
+async function submitRating(agentId, score, comment, txHash, ratingDiv) {
+  if (!window.ethereum || !userAccount) { showToast('Connect wallet first', 'error'); return; }
+  try {
+    ratingDiv.querySelector('.rating-status').innerHTML = '<span style="color:var(--accent)">Submitting rating on-chain...</span>';
+    const data = encodeRateCall(agentId, score, comment, txHash);
+    const tx = await window.ethereum.request({ method: 'eth_sendTransaction', params: [{ from: userAccount, to: X402_RATING_CONTRACT, data, chainId: '0xc4' }] });
+    ratingDiv.querySelector('.rating-status').innerHTML = '<span style="color:var(--success)">Rating submitted on-chain! (' + score + '/5 ★)</span>';
+    ratingDiv.querySelectorAll('.star-btn').forEach(b => b.style.pointerEvents = 'none');
+    ratingDiv.querySelector('.btn-primary').style.display = 'none';
+  } catch (err) {
+    if (err.code === 4001) ratingDiv.querySelector('.rating-status').innerHTML = '<span style="color:var(--text-muted)">Rating cancelled</span>';
+    else ratingDiv.querySelector('.rating-status').innerHTML = '<span style="color:var(--danger)">Rating failed: ' + err.message + '</span>';
+  }
+}
+
+async function executeX402(baseUrl, path, epId, payTo, usdcAddr, amountRaw, agentId) {
   const input = document.getElementById('input_' + epId);
   const resultDiv = document.getElementById('result_' + epId);
   const query = input?.value || '';
@@ -1984,7 +2019,20 @@ async function executeX402(baseUrl, path, epId, payTo, usdcAddr, amountRaw) {
       else if (data.gas) resultText = JSON.stringify(data.gas, null, 2);
       else resultText = JSON.stringify(data, null, 2);
 
-      resultDiv.innerHTML = '<div style="color:var(--success);font-weight:600;margin-bottom:8px">Payment settled (zero gas) ' + (data.payment?.amount || '') + '</div>' + resultText + txLink;
+      const ratingHtml = txHash && agentId != null ? `
+        <div class="x402-rating" style="margin-top:12px;padding:12px;border-top:1px solid var(--border)">
+          <div style="font-size:.85rem;font-weight:600;margin-bottom:6px">Rate this service:</div>
+          <div style="display:flex;gap:4px;margin-bottom:8px">
+            ${[1,2,3,4,5].map(s => `<button class="star-btn" onclick="this.parentElement.querySelectorAll('.star-btn').forEach((b,i)=>b.style.color=i<${s}?'#f59e0b':'var(--text-muted)');this.closest('.x402-rating').dataset.score='${s}'" style="background:none;border:none;font-size:1.4rem;cursor:pointer;color:var(--text-muted);transition:color .2s">★</button>`).join('')}
+          </div>
+          <div style="display:flex;gap:8px">
+            <input class="form-input rating-comment" placeholder="Optional comment..." style="flex:1;padding:6px 10px;font-size:.82rem">
+            <button class="btn btn-primary btn-sm" onclick="const d=this.closest('.x402-rating');const s=Number(d.dataset.score||0);if(!s){showToast('Select a star rating first','error');return;}submitRating(${agentId},s,d.querySelector('.rating-comment').value,'0x${txHash}',d)">Submit</button>
+          </div>
+          <div class="rating-status" style="margin-top:6px;font-size:.8rem"></div>
+        </div>
+      ` : '';
+      resultDiv.innerHTML = '<div style="color:var(--success);font-weight:600;margin-bottom:8px">Payment settled (zero gas) ' + (data.payment?.amount || '') + '</div>' + resultText + txLink + ratingHtml;
       showToast('x402 payment successful!', 'success');
     } else {
       resultDiv.innerHTML = '<span style="color:var(--danger)">Error: ' + (data.error || data.reason || resp.status) + '</span>';
