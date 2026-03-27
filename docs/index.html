@@ -1674,6 +1674,17 @@ async function loadAgents() {
         } catch(e) { /* no rep data */ }
       }));
 
+      // Fetch x402 call counts from each agent's /status endpoint
+      await Promise.all(allAgents.map(async (ag) => {
+        if (!ag.endpoint) return;
+        try {
+          const statusUrl = ag.endpoint.replace(/\/$/, '') + '/status';
+          const resp = await Promise.race([fetch(statusUrl), new Promise((_, rej) => setTimeout(() => rej('timeout'), 3000))]);
+          const data = await resp.json();
+          if (data.x402Calls != null) ag.x402Calls = data.x402Calls;
+        } catch(e) { /* agent offline or no status endpoint */ }
+      }));
+
       applyFilters();
     })(), 10000, 'Agents loading');
 
@@ -1742,7 +1753,7 @@ function renderAgents(agents) {
         ${endpointHtml}
         <div class="agent-meta">
           <div class="agent-rating">${stars} <span style="color:var(--text-muted)">${ag.rating > 0 ? ag.rating.toFixed(1) : 'No ratings'} (${ag.ratingCount})</span></div>
-          <div class="agent-tasks-count">${ag.totalTasks} tasks completed</div>
+          <div class="agent-tasks-count">${ag.x402Calls != null ? ag.x402Calls + ' x402 calls' : ag.totalTasks + ' tasks'}</div>
         </div>
         <div class="skill-tags">${tags}</div>
         <div class="agent-address">${shortAddr}</div>
