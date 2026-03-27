@@ -2042,20 +2042,23 @@ async function executeX402(baseUrl, path, epId, payTo, usdcAddr, amountRaw, agen
         ratingDiv.style.cssText = 'margin-top:12px;padding:12px;border-top:1px solid var(--border)';
         ratingDiv.innerHTML = '<div style="font-size:.85rem;font-weight:600;margin-bottom:6px">Rate this service:</div><div class="star-row" style="display:flex;gap:4px;margin-bottom:8px"></div><div style="display:flex;gap:8px"><input class="form-input rating-comment" placeholder="Optional comment..." style="flex:1;padding:6px 10px;font-size:.82rem"><button class="btn btn-primary btn-sm rating-submit-btn">Submit</button></div><div class="rating-status" style="margin-top:6px;font-size:.8rem"></div>';
         const starRow = ratingDiv.querySelector('.star-row');
-        let selectedScore = 0;
-        for (let s = 1; s <= 5; s++) {
-          const star = document.createElement('button');
-          star.textContent = '\u2605';
-          star.style.cssText = 'background:none;border:none;font-size:1.4rem;cursor:pointer;color:var(--text-muted);transition:color .2s';
-          star.addEventListener('click', function() {
-            selectedScore = s;
-            starRow.querySelectorAll('button').forEach(function(b, i) { b.style.color = i < s ? '#f59e0b' : 'var(--text-muted)'; });
-          });
-          starRow.appendChild(star);
+        var ratingState = { score: 0 };
+        for (var s = 1; s <= 5; s++) {
+          (function(score) {
+            var star = document.createElement('button');
+            star.textContent = '\u2605';
+            star.style.cssText = 'background:none;border:none;font-size:1.4rem;cursor:pointer;color:var(--text-muted);transition:color .2s';
+            star.addEventListener('click', function() {
+              ratingState.score = score;
+              var buttons = starRow.querySelectorAll('button');
+              for (var i = 0; i < buttons.length; i++) { buttons[i].style.color = i < score ? '#f59e0b' : 'var(--text-muted)'; }
+            });
+            starRow.appendChild(star);
+          })(s);
         }
         ratingDiv.querySelector('.rating-submit-btn').addEventListener('click', function() {
-          if (!selectedScore) { showToast('Select a star rating first', 'error'); return; }
-          submitRating(agentId, selectedScore, ratingDiv.querySelector('.rating-comment').value, txHash, ratingDiv);
+          if (!ratingState.score) { showToast('Select a star rating first', 'error'); return; }
+          submitRating(agentId, ratingState.score, ratingDiv.querySelector('.rating-comment').value, txHash, ratingDiv);
         });
         resultDiv.appendChild(ratingDiv);
       }
