@@ -2071,7 +2071,71 @@ function generateAndDownload() {
   // Generate agent-server.mjs
   const pricesObj = services.map(s => `  '${s.path}': { amount: '${s.amount}', display: '${s.display}', desc: '${s.desc}' },`).join('\n');
 
-  const routeHandlers = services.map(s => `
+  // Generate route handlers — /api/ask gets native tool_use mode, others get simple askClaude
+  const routeHandlers = services.map(s => {
+    if (s.path === '/api/ask') {
+      return `
+// ${s.desc} — Native tool_use mode with agentic loop
+const ASK_TOOLS = [
+  { name: 'answer_question', description: 'Answer any general question using AI knowledge. Use when no specialized data tool is needed.', input_schema: { type: 'object', properties: { question: { type: 'string', description: 'The question to answer' } }, required: ['question'] } },
+  { name: 'web_search', description: 'Search for current information on any topic. Use when user asks about recent events, prices, or facts you may not know.', input_schema: { type: 'object', properties: { query: { type: 'string', description: 'Search query' } }, required: ['query'] } },
+];
+
+function executeAskTool(name, input) {
+  // Default tools return a hint for Claude to answer directly
+  // Developers: add your own tools here (API calls, database queries, etc.)
+  switch (name) {
+    case 'answer_question': return JSON.stringify({ note: 'Answer this from your knowledge: ' + input.question });
+    case 'web_search': return JSON.stringify({ note: 'Web search not configured. Answer from your knowledge: ' + input.query });
+    default: return JSON.stringify({ error: 'Unknown tool: ' + name });
+  }
+}
+
+app.get('${s.path}', x402Guard('${s.path}'), async (req, res) => {
+  const question = req.query.q || '';
+  if (!question) return res.status(400).json({ error: 'q parameter required' });
+  log(\`${s.path}: "\${question}"\`);
+  if (!claude) return res.status(500).json({ error: 'Claude API not configured' });
+
+  const MAX_ROUNDS = 6;
+  const allToolsUsed = [];
+  let messages = [{ role: 'user', content: question }];
+  let finalAnswer = '';
+
+  for (let round = 0; round < MAX_ROUNDS; round++) {
+    log('  Round ' + (round + 1) + '...');
+    const response = await claude.messages.create({
+      model: 'claude-sonnet-4-20250514', max_tokens: 2048,
+      system: 'You are a helpful AI agent. Use tools when needed. Reply in the same language as the user question.',
+      tools: ASK_TOOLS, messages,
+    });
+    const assistantContent = response.content;
+    messages.push({ role: 'assistant', content: assistantContent });
+
+    if (response.stop_reason === 'end_turn') {
+      for (const block of assistantContent) { if (block.type === 'text') finalAnswer += block.text; }
+      log('  Done after ' + (round + 1) + ' round(s)');
+      break;
+    }
+    if (response.stop_reason === 'tool_use') {
+      const toolUseBlocks = assistantContent.filter(b => b.type === 'tool_use');
+      const toolResults = await Promise.all(toolUseBlocks.map(async (block) => {
+        log('    Tool: ' + block.name);
+        allToolsUsed.push(block.name);
+        const result = executeAskTool(block.name, block.input);
+        return { type: 'tool_result', tool_use_id: block.id, content: result };
+      }));
+      messages.push({ role: 'user', content: toolResults });
+    }
+  }
+  if (!finalAnswer) finalAnswer = '(Reached maximum rounds without a final answer)';
+
+  const response = { agent: state.agentName, type: 'ask', question, toolsUsed: [...new Set(allToolsUsed)], answer: finalAnswer, poweredBy: 'Claude AI (native tool_use)', timestamp: new Date().toISOString() };
+  if (req.x402Settlement) { response.payment = req.x402Settlement; res.setHeader('PAYMENT-RESPONSE', Buffer.from(JSON.stringify(req.x402Settlement)).toString('base64')); }
+  res.json(response);
+});`;
+    } else {
+      return `
 // ${s.desc}
 app.get('${s.path}', x402Guard('${s.path}'), async (req, res) => {
   const query = req.query.q || req.query.text || req.query.address || '';
@@ -2083,7 +2147,9 @@ app.get('${s.path}', x402Guard('${s.path}'), async (req, res) => {
   const response = { agent: state.agentName, type: '${s.path.replace('/api/','')}', query, result, timestamp: new Date().toISOString() };
   if (req.x402Settlement) { response.payment = req.x402Settlement; res.setHeader('PAYMENT-RESPONSE', Buffer.from(JSON.stringify(req.x402Settlement)).toString('base64')); }
   res.json(response);
-});`).join('\n');
+});`;
+    }
+  }).join('\n');
 
   const code = `#!/usr/bin/env node
 /**
