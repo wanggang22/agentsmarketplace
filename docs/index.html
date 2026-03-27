@@ -1065,19 +1065,13 @@ nav{display:flex;align-items:center;gap:8px}
 <section class="section hidden" id="sectionDashboard">
   <div class="container">
     <h2 class="section-title">My Dashboard</h2>
-    <p class="section-subtitle">Manage your tasks and track progress</p>
-    <div id="dashboardNotConnected" class="empty-state">
-      <p>Connect your wallet to view your dashboard</p>
-      <button class="btn btn-primary" onclick="connectWallet()">Connect Wallet</button>
-    </div>
-    <div id="dashboardContent" class="hidden">
-      <div class="tabs">
-        <button class="tab-btn active" onclick="switchTab('client')" id="tabClient">My Tasks (Client)</button>
-        <button class="tab-btn" onclick="switchTab('agent')" id="tabAgent">My Tasks (Agent)</button>
+    <p class="section-subtitle">Your x402 API call history</p>
+    <div id="dashboardContent">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <span style="font-size:.85rem;color:var(--text-muted)" id="historyCount"></span>
+        <button class="btn btn-secondary btn-sm" onclick="if(confirm('Clear all history?')){localStorage.removeItem('x402_history');loadX402History();}">Clear History</button>
       </div>
-      <div id="taskList" class="task-list">
-        <div class="loading-overlay"><div class="spinner"></div> Loading tasks...</div>
-      </div>
+      <div id="x402HistoryList" class="task-list"></div>
     </div>
   </div>
 </section>
@@ -1502,7 +1496,7 @@ function showSection(name) {
   });
 
   if (name === 'marketplace') window.scrollTo({ top: 0, behavior: 'smooth' });
-  if (name === 'dashboard') loadDashboard();
+  if (name === 'dashboard') loadX402History();
   if (name === 'marketplace') { loadAgents(); loadStats(); loadMarketplaceX402(); }
   if (name === 'nanopayments') { loadNanopayStats(); loadStats(); }
   if (name === 'register') { initServiceRows(); }
@@ -2034,6 +2028,14 @@ async function executeX402(baseUrl, path, epId, payTo, usdcAddr, amountRaw, agen
       ` : '';
       resultDiv.innerHTML = '<div style="color:var(--success);font-weight:600;margin-bottom:8px">Payment settled (zero gas) ' + (data.payment?.amount || '') + '</div>' + resultText + txLink + ratingHtml;
       showToast('x402 payment successful!', 'success');
+
+      // Save to localStorage history
+      try {
+        const history = JSON.parse(localStorage.getItem('x402_history') || '[]');
+        history.unshift({ agent: data.agent || 'Unknown Agent', agentId, path, question: question, answer: resultText.slice(0, 500), amount: data.payment?.amount || '', txHash: txHash || '', timestamp: new Date().toISOString() });
+        if (history.length > 200) history.length = 200; // cap at 200 entries
+        localStorage.setItem('x402_history', JSON.stringify(history));
+      } catch(e) { /* localStorage full or unavailable */ }
     } else {
       resultDiv.innerHTML = '<span style="color:var(--danger)">Error: ' + (data.error || data.reason || resp.status) + '</span>';
     }
@@ -2486,96 +2488,41 @@ async function registerAgent() {
 /* =================================================================
    DASHBOARD
    ================================================================= */
-function switchTab(tab) {
-  currentTab = tab;
-  document.getElementById('tabClient').classList.toggle('active', tab === 'client');
-  document.getElementById('tabAgent').classList.toggle('active', tab === 'agent');
-  loadDashboard();
-}
+function loadX402History() {
+  const listDiv = document.getElementById('x402HistoryList');
+  const countSpan = document.getElementById('historyCount');
+  const history = JSON.parse(localStorage.getItem('x402_history') || '[]');
 
-async function loadDashboard() {
-  if (!userAccount) return;
+  countSpan.textContent = history.length + ' call' + (history.length !== 1 ? 's' : '');
 
-  const taskList = document.getElementById('taskList');
-  taskList.innerHTML = '<div class="loading-overlay"><div class="spinner"></div> Loading tasks...</div>';
-
-  try {
-    const sel = currentTab === 'client' ? SEL.getTasksByClient : SEL.getTasksByAgent;
-    const data = sel + encodeAddress(userAccount);
-    const result = await rpcCall(CONTRACTS.TaskManager, data);
-    const raw = result.replace(/^0x/, '');
-
-    if (raw.length < 64) {
-      taskList.innerHTML = '<div class="empty-state"><p>No tasks found</p></div>';
-      return;
-    }
-
-    const offset = Number(decodeUint(raw, 0));
-    const count = Number(decodeUint(raw, offset));
-
-    if (count === 0) {
-      taskList.innerHTML = '<div class="empty-state"><p>No tasks found</p><p style="font-size:.85rem">Tasks you ' + (currentTab === 'client' ? 'create' : 'are assigned') + ' will appear here</p></div>';
-      return;
-    }
-
-    const taskIds = [];
-    for (let i = 0; i < count; i++) {
-      taskIds.push(Number(decodeUint(raw, offset + 32 + i * 32)));
-    }
-
-    const tasks = [];
-    await Promise.all(taskIds.map(async (id) => {
-      try {
-        const tData = SEL.getTask + encodeUint(id);
-        const tRes = await rpcCall(CONTRACTS.TaskManager, tData);
-        const tRaw = tRes.replace(/^0x/, '');
-
-        /* Task struct (10 fields):
-           0: client (address)
-           1: agent (address)
-           2: description (string - offset)
-           3: payment (uint256)
-           4: resultHash (string - offset)
-           5: state (uint8 as uint256)
-           6: createdAt (uint256)
-           7: acceptedAt (uint256)
-           8: completedAt (uint256)
-           9: disputedAt (uint256)
-        */
-        // getTask returns struct with outer offset pointer (first 32 bytes)
-        const tOff = Number(decodeUint(tRaw, 0)) * 2; // offset in hex chars
-        // New v2 Task struct: client(0), agentId(32), desc(64), payment(96), resultHash(128), state(160), createdAt(192), acceptedAt(224), completedAt(256), disputedAt(288)
-        const client = decodeAddress(tRaw, tOff + 0);
-        const agentId = Number(decodeUint(tRaw, tOff + 32));
-        const descOffset = Number(decodeUint(tRaw, tOff + 64));
-        const payment = decodeUint(tRaw, tOff + 96);
-        const resultOffset = Number(decodeUint(tRaw, tOff + 128));
-        const state = Number(decodeUint(tRaw, tOff + 160));
-        const createdAt = Number(decodeUint(tRaw, tOff + 192));
-        const acceptedAt = Number(decodeUint(tRaw, tOff + 224));
-        const completedAt = Number(decodeUint(tRaw, tOff + 256));
-        const disputedAt = Number(decodeUint(tRaw, tOff + 288));
-
-        const description = decodeStringAt(tRaw, tOff + descOffset);
-        const resultHash = decodeStringAt(tRaw, tOff + resultOffset);
-
-        tasks.push({ id, client, agent: 'Agent #' + agentId, agentId, description, payment, resultHash, state, createdAt, acceptedAt, completedAt, disputedAt });
-      } catch(e) { console.error('Task fetch error:', e); }
-    }));
-
-    tasks.sort((a, b) => b.createdAt - a.createdAt);
-
-    if (tasks.length === 0) {
-      taskList.innerHTML = '<div class="empty-state"><p>No tasks found</p></div>';
-      return;
-    }
-
-    taskList.innerHTML = tasks.map(t => renderTaskCard(t)).join('');
-
-  } catch(e) {
-    console.error('Dashboard error:', e);
-    taskList.innerHTML = '<div class="empty-state"><p>Failed to load tasks: ' + e.message + '</p></div>';
+  if (history.length === 0) {
+    listDiv.innerHTML = '<div class="empty-state"><p>No API calls yet</p><p style="font-size:.85rem">Your x402 API call history will appear here after you use an agent</p></div>';
+    return;
   }
+
+  listDiv.innerHTML = history.map((h, i) => {
+    const date = new Date(h.timestamp);
+    const timeStr = date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+    const txLink = h.txHash ? '<a href="https://www.okx.com/web3/explorer/xlayer/tx/' + h.txHash + '" target="_blank" rel="noopener" style="color:var(--accent);font-size:.78rem">View tx</a>' : '';
+    const answerPreview = (h.answer || '').slice(0, 200) + ((h.answer || '').length > 200 ? '...' : '');
+    return `
+      <div style="padding:16px;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="font-weight:700;color:var(--text-primary)">${h.agent || 'Agent'}</span>
+            <span style="font-size:.78rem;color:var(--cyan);font-weight:600">${h.amount || ''}</span>
+            <code style="font-size:.75rem;background:var(--bg-secondary);padding:2px 6px;border-radius:4px">${h.path || '/api/ask'}</code>
+          </div>
+          <span style="font-size:.78rem;color:var(--text-muted)">${timeStr}</span>
+        </div>
+        <div style="font-size:.88rem;color:var(--text-primary);font-weight:600;margin-bottom:6px">Q: ${(h.question || '').slice(0, 100)}</div>
+        <div style="font-size:.83rem;color:var(--text-secondary);white-space:pre-wrap;line-height:1.5">${answerPreview}</div>
+        <div style="margin-top:8px;display:flex;justify-content:space-between;align-items:center">
+          ${txLink}
+          <button class="btn btn-secondary btn-sm" style="font-size:.75rem;padding:4px 10px" onclick="this.parentElement.previousElementSibling.textContent='${(h.answer || '').replace(/'/g, "\\'")}';this.textContent='Expanded'">Show full</button>
+        </div>
+      </div>`;
+  }).join('');
 }
 
 function renderTaskCard(t) {
