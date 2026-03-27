@@ -2032,7 +2032,7 @@ async function executeX402(baseUrl, path, epId, payTo, usdcAddr, amountRaw, agen
       // Save to localStorage history
       try {
         const history = JSON.parse(localStorage.getItem('x402_history') || '[]');
-        history.unshift({ agent: data.agent || 'Unknown Agent', agentId, path, question: question, answer: resultText.slice(0, 500), amount: data.payment?.amount || '', txHash: txHash || '', timestamp: new Date().toISOString() });
+        history.unshift({ agent: data.agent || 'Unknown Agent', agentId, path, question: query, answer: resultText.slice(0, 500), amount: data.payment?.amount || '', txHash: txHash || '', timestamp: new Date().toISOString() });
         if (history.length > 200) history.length = 200; // cap at 200 entries
         localStorage.setItem('x402_history', JSON.stringify(history));
       } catch(e) { /* localStorage full or unavailable */ }
