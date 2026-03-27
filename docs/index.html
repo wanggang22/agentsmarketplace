@@ -1872,6 +1872,22 @@ function encodeRateCall(agentId, score, comment, txHash) {
   return sel + agentHex + scoreHex + strOffset + txHashHex + strLen + strData;
 }
 
+function selectStars(btn, score) {
+  const parent = btn.parentElement;
+  parent.querySelectorAll('.star-btn').forEach(function(b, i) {
+    b.style.color = i < score ? '#f59e0b' : 'var(--text-muted)';
+  });
+  btn.closest('.x402-rating').dataset.selectedScore = score;
+}
+
+function doSubmitRating(ratingId, agentId, txHash) {
+  const div = document.getElementById(ratingId);
+  const score = Number(div.dataset.selectedScore || 0);
+  if (!score) { showToast('Select a star rating first', 'error'); return; }
+  const comment = div.querySelector('.rating-comment').value;
+  submitRating(agentId, score, comment, '0x' + txHash, div);
+}
+
 async function submitRating(agentId, score, comment, txHash, ratingDiv) {
   if (!window.ethereum || !userAccount) { showToast('Connect wallet first', 'error'); return; }
   try {
@@ -2013,19 +2029,23 @@ async function executeX402(baseUrl, path, epId, payTo, usdcAddr, amountRaw, agen
       else if (data.gas) resultText = JSON.stringify(data.gas, null, 2);
       else resultText = JSON.stringify(data, null, 2);
 
-      const ratingHtml = txHash && agentId != null ? `
-        <div class="x402-rating" style="margin-top:12px;padding:12px;border-top:1px solid var(--border)">
-          <div style="font-size:.85rem;font-weight:600;margin-bottom:6px">Rate this service:</div>
-          <div style="display:flex;gap:4px;margin-bottom:8px">
-            ${[1,2,3,4,5].map(s => `<button class="star-btn" onclick="this.parentElement.querySelectorAll('.star-btn').forEach((b,i)=>b.style.color=i<${s}?'#f59e0b':'var(--text-muted)');this.closest('.x402-rating').dataset.score='${s}'" style="background:none;border:none;font-size:1.4rem;cursor:pointer;color:var(--text-muted);transition:color .2s">★</button>`).join('')}
-          </div>
-          <div style="display:flex;gap:8px">
-            <input class="form-input rating-comment" placeholder="Optional comment..." style="flex:1;padding:6px 10px;font-size:.82rem">
-            <button class="btn btn-primary btn-sm" onclick="const d=this.closest('.x402-rating');const s=Number(d.dataset.score||0);if(!s){showToast('Select a star rating first','error');return;}submitRating(${agentId},s,d.querySelector('.rating-comment').value,'0x${txHash}',d)">Submit</button>
-          </div>
-          <div class="rating-status" style="margin-top:6px;font-size:.8rem"></div>
-        </div>
-      ` : '';
+      let ratingHtml = '';
+      if (txHash && agentId != null) {
+        const rid = 'rating_' + Date.now();
+        ratingHtml = '<div class="x402-rating" id="' + rid + '" style="margin-top:12px;padding:12px;border-top:1px solid var(--border)">'
+          + '<div style="font-size:.85rem;font-weight:600;margin-bottom:6px">Rate this service:</div>'
+          + '<div style="display:flex;gap:4px;margin-bottom:8px">'
+          + [1,2,3,4,5].map(function(s) {
+              return '<button class="star-btn" data-score="' + s + '" onclick="selectStars(this,' + s + ')" style="background:none;border:none;font-size:1.4rem;cursor:pointer;color:var(--text-muted);transition:color .2s">★</button>';
+            }).join('')
+          + '</div>'
+          + '<div style="display:flex;gap:8px">'
+          + '<input class="form-input rating-comment" placeholder="Optional comment..." style="flex:1;padding:6px 10px;font-size:.82rem">'
+          + '<button class="btn btn-primary btn-sm" onclick="doSubmitRating(\'' + rid + '\',' + agentId + ',\'' + txHash + '\')">Submit</button>'
+          + '</div>'
+          + '<div class="rating-status" style="margin-top:6px;font-size:.8rem"></div>'
+          + '</div>';
+      }
       resultDiv.innerHTML = '<div style="color:var(--success);font-weight:600;margin-bottom:8px">Payment settled (zero gas) ' + (data.payment?.amount || '') + '</div>' + resultText + txLink + ratingHtml;
       showToast('x402 payment successful!', 'success');
 
