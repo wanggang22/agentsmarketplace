@@ -20,7 +20,7 @@
  */
 
 import {
-  createPublicClient, createWalletClient, http, defineChain, parseAbi, formatUnits, keccak256, toHex,
+  createPublicClient, createWalletClient, http, defineChain, parseAbi, formatUnits,
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import express from 'express';
@@ -30,8 +30,7 @@ import Anthropic from '@anthropic-ai/sdk';
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || '';
 const claude = ANTHROPIC_API_KEY ? new Anthropic({ apiKey: ANTHROPIC_API_KEY }) : null;
 
-const PORT    = Number(process.env.PORT) || 3080;
-const POLL_MS = Number(process.env.POLL_MS) || 5000;
+const PORT = Number(process.env.PORT) || 3080;
 
 const AGENT_PK = process.env.AGENT_PK;
 if (!AGENT_PK) { console.error('Set AGENT_PK environment variable.'); process.exit(1); }
@@ -44,8 +43,6 @@ const OKX_BASE_URL   = 'https://web3.okx.com';
 
 const RPC_URL         = 'https://rpc.xlayer.tech';
 const AGENT_REGISTRY  = '0x7337a8963Dc7Cf0644f9423bBE397b3D0f97ACa1';
-const TASK_MANAGER    = '0x599e23D6073426eBe357d03056258eEAa217e01D';
-const NANOPAY_DEMO    = '0x850747924481c0B1Ad3Eca2f60810Ff91B72b6ef';
 const USDC_ADDRESS    = '0x74b7F16337b8972027F6196A17a631aC6dE26d22';
 const USDT_ADDRESS    = '0x779ded0c9e1022225f8e0630b35a9b54be713736';
 const USDG_ADDRESS    = '0x4ae46a509f6b1d9056937ba4500cb143933d2dc8';
@@ -67,16 +64,6 @@ const registryAbi = parseAbi([
   'function getAgent(address) view returns ((string name,string description,string endpoint,uint256 pricePerTask,string[] skillTags,bool active,uint256 registeredAt,uint256 totalTasks,uint256 totalEarned))',
 ]);
 
-const taskManagerAbi = parseAbi([
-  'function getTaskCount() view returns (uint256)',
-  'function getTask(uint256 taskId) view returns ((address client,address agent,string description,uint256 payment,string resultHash,uint8 state,uint256 createdAt,uint256 acceptedAt,uint256 completedAt,uint256 disputedAt))',
-  'function acceptTask(uint256 taskId)',
-  'function completeTask(uint256 taskId,string resultHash)',
-]);
-
-const nanopayAbi = parseAbi([
-  'function recordPayment(address agent,uint256 amount,string taskType)',
-]);
 
 const account = privateKeyToAccount(AGENT_PK);
 const publicClient = createPublicClient({ chain: xLayer, transport: http(RPC_URL) });
@@ -84,10 +71,10 @@ const walletClient = createWalletClient({ account, chain: xLayer, transport: htt
 
 const state = {
   agentName: '(loading...)', agentAddress: account.address,
-  status: 'starting', tasksProcessed: 0, totalEarned: 0n,
+  status: 'starting',
   x402Calls: 0, x402Earned: 0n,
-  recentLogs: [], lastKnownTaskCount: 0n,
-  startedAt: new Date(), processing: new Set(),
+  recentLogs: [],
+  startedAt: new Date(),
 };
 
 function log(msg) {
@@ -354,98 +341,6 @@ async function askClaude(systemPrompt, userMessage) {
   }
 }
 
-// ── AI result generators (for TaskManager tasks) ─────────────────────────────
-
-function classifyTask(d) {
-  const l = d.toLowerCase();
-  if (l.includes('audit') || l.includes('security') || l.includes('review')) return 'security-audit';
-  if (l.includes('translate')) return 'translation';
-  if (l.includes('analyze') || l.includes('data')) return 'data-analysis';
-  return 'general';
-}
-
-function generateResult(description, taskType) {
-  const results = {
-    'security-audit': { type: 'security-audit', summary: 'Audit completed.', overallRisk: 'LOW', findings: [] },
-    'translation': { type: 'translation', summary: 'Translation completed.', confidence: 0.96 },
-    'data-analysis': { type: 'data-analysis', summary: 'Analysis completed.', confidence: 0.91 },
-    'general': { type: 'task-completion', summary: `Completed: "${description.slice(0, 100)}"`, status: 'done' },
-  };
-  return JSON.stringify(results[taskType] || results.general);
-}
-
-// ── On-chain tx helper ────────────────────────────────────────────────────────
-
-async function sendTx(params, label) {
-  log(`  TX: ${label}...`);
-  try {
-    const hash = await walletClient.writeContract(params);
-    const receipt = await publicClient.waitForTransactionReceipt({ hash, timeout: 60_000 });
-    log(`  TX confirmed (block ${receipt.blockNumber})`);
-    return receipt;
-  } catch (err) {
-    log(`  TX FAILED: ${err.shortMessage || err.message}`);
-    throw err;
-  }
-}
-
-// ── TaskManager polling ───────────────────────────────────────────────────────
-
-async function processTask(taskId) {
-  if (state.processing.has(taskId)) return;
-  state.processing.add(taskId);
-  try {
-    const task = await publicClient.readContract({ address: TASK_MANAGER, abi: taskManagerAbi, functionName: 'getTask', args: [taskId] });
-    if (task.agent.toLowerCase() !== account.address.toLowerCase()) return;
-    if (task.state !== 0) return;
-
-    log(`New task #${taskId}: ${task.description.slice(0, 80)}`);
-    await sendTx({ address: TASK_MANAGER, abi: taskManagerAbi, functionName: 'acceptTask', args: [taskId] }, `acceptTask(${taskId})`);
-
-    const taskType = classifyTask(task.description);
-    const delay = 3000 + Math.floor(Math.random() * 2000);
-    log(`  Processing as "${taskType}" (${delay}ms)...`);
-    await new Promise((r) => setTimeout(r, delay));
-
-    const resultBody = generateResult(task.description, taskType);
-    const resultHash = keccak256(toHex(resultBody)).slice(0, 50);
-    await sendTx({ address: TASK_MANAGER, abi: taskManagerAbi, functionName: 'completeTask', args: [taskId, resultHash] }, `completeTask(${taskId})`);
-
-    try {
-      await sendTx({ address: NANOPAY_DEMO, abi: nanopayAbi, functionName: 'recordPayment', args: [account.address, task.payment, taskType] }, 'recordPayment');
-    } catch { /* non-fatal */ }
-
-    state.tasksProcessed += 1;
-    state.totalEarned += task.payment;
-    log(`Task ${taskId} completed!`);
-  } catch (err) {
-    log(`Error on task ${taskId}: ${err.shortMessage || err.message}`);
-  } finally {
-    state.processing.delete(taskId);
-  }
-}
-
-let pollTimer = null;
-let consecutiveErrors = 0;
-
-async function poll() {
-  try {
-    const taskCount = await publicClient.readContract({ address: TASK_MANAGER, abi: taskManagerAbi, functionName: 'getTaskCount' });
-    consecutiveErrors = 0;
-    if (taskCount > state.lastKnownTaskCount) {
-      for (let id = state.lastKnownTaskCount; id < taskCount; id++) processTask(id);
-      state.lastKnownTaskCount = taskCount;
-    }
-  } catch (err) {
-    consecutiveErrors += 1;
-    const backoff = Math.min(consecutiveErrors * 5, 60);
-    log(`RPC error: ${err.shortMessage || err.message}. Retrying in ${backoff}s.`);
-    clearTimeout(pollTimer);
-    pollTimer = setTimeout(poll, backoff * 1000);
-    return;
-  }
-  pollTimer = setTimeout(poll, POLL_MS);
-}
 
 // ── Express app ───────────────────────────────────────────────────────────────
 
@@ -1053,7 +948,6 @@ app.get('/api', (_req, res) => {
 app.get('/', (_req, res) => {
   const uptime = Math.floor((Date.now() - state.startedAt.getTime()) / 1000);
   const uptimeStr = `${Math.floor(uptime / 3600)}h ${Math.floor((uptime % 3600) / 60)}m ${uptime % 60}s`;
-  const earned = formatUnits(state.totalEarned, 6);
   const x402Earned = formatUnits(state.x402Earned, 6);
   const statusColor = state.status === 'listening' ? '#00e676' : '#ffa726';
   const okxStatus = hasOkxKeys ? '<span style="color:#00e676">connected</span>' : '<span style="color:#ef4444">no API keys</span>';
@@ -1065,7 +959,6 @@ app.get('/', (_req, res) => {
 <style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:system-ui;background:#0d1117;color:#c9d1d9;padding:2rem}.c{max-width:720px;margin:0 auto}h1{color:#58a6ff;margin-bottom:.5rem}.card{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:1.25rem;margin-bottom:1.25rem}code{background:#21262d;padding:2px 6px;border-radius:4px;font-size:.85rem}a{color:#58a6ff}</style></head>
 <body><div class="c"><h1>AgentsMarketplace Server</h1><p style="color:#8b949e;margin-bottom:2rem">AI Agent Execution Bridge — X Layer + x402 (OKX Facilitator)</p>
 <div class="card"><b>${escapeHtml(state.agentName)}</b> <span style="color:${statusColor}">${state.status}</span><br><code>${state.agentAddress}</code></div>
-<div class="card"><b>Task Stats</b><br>Tasks: ${state.tasksProcessed} | Earned: ${earned} USDC</div>
 <div class="card"><b>x402 Micropayments</b> — OKX Facilitator: ${okxStatus}<br>Calls: ${state.x402Calls} | Earned: ${x402Earned} USDC | Gas: <span style="color:#00e676">$0 (OKX subsidy)</span><br><br>
 <code>GET /api/analyze</code> $0.01 &nbsp; <code>GET /api/translate</code> $0.005 &nbsp; <code>GET /api/audit</code> $0.05<br><br>
 <a href="/api">GET /api</a> — endpoint list + payment instructions (free)</div>
@@ -1076,7 +969,6 @@ app.get('/', (_req, res) => {
 app.get('/status', (_req, res) => {
   res.json({
     agent: state.agentName, address: state.agentAddress, status: state.status,
-    tasksProcessed: state.tasksProcessed, totalEarned: formatUnits(state.totalEarned, 6),
     x402Calls: state.x402Calls, x402Earned: formatUnits(state.x402Earned, 6),
     facilitator: hasOkxKeys ? 'OKX (connected)' : 'not configured',
   });
@@ -1114,12 +1006,11 @@ async function start() {
   }
 
   state.status = 'listening';
-  log('Listening for tasks + x402 API calls...');
-  pollTimer = setTimeout(poll, POLL_MS);
+  log('Listening for x402 API calls...');
   app.listen(PORT, () => log(`Dashboard at http://localhost:${PORT}`));
 }
 
-process.on('SIGINT', () => { clearTimeout(pollTimer); process.exit(0); });
-process.on('SIGTERM', () => { clearTimeout(pollTimer); process.exit(0); });
+process.on('SIGINT', () => { process.exit(0); });
+process.on('SIGTERM', () => { process.exit(0); });
 
 start().catch((err) => { console.error('[FATAL]', err.message); process.exit(1); });
