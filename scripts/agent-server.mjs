@@ -870,102 +870,155 @@ app.get('/api/gas', x402Guard('/api/gas'), async (req, res) => {
   res.json(response);
 });
 
-// /api/ask — Unified AI Agent: auto-selects tools, combines all capabilities
+// /api/ask — Unified AI Agent: native tool_use mode with agentic loop
+const ASK_TOOLS = [
+  {
+    name: 'get_token_price',
+    description: 'Get real-time token price. Use when user asks about price, cost, or value of a token. Input: token name or symbol (e.g. BTC, PEPE, ETH).',
+    input_schema: { type: 'object', properties: { token: { type: 'string', description: 'Token name or symbol, e.g. BTC, PEPE, ETH' } }, required: ['token'] }
+  },
+  {
+    name: 'get_token_info',
+    description: 'Get detailed token info including market cap, 24h volume, and 24h price change. Use when user asks about market data, volume, or market cap.',
+    input_schema: { type: 'object', properties: { token: { type: 'string', description: 'Token name or symbol' } }, required: ['token'] }
+  },
+  {
+    name: 'get_kline',
+    description: 'Get 7-day price chart (K-line/candlestick data). Use when user asks about price trends, charts, or historical movement.',
+    input_schema: { type: 'object', properties: { token: { type: 'string', description: 'Token name or symbol' } }, required: ['token'] }
+  },
+  {
+    name: 'get_hot_tokens',
+    description: 'Get currently trending/hot tokens list. Use when user asks what is trending, popular, or hot in the market.',
+    input_schema: { type: 'object', properties: { chain: { type: 'string', description: 'Chain index: "1" for ETH, "196" for X Layer, "501" for Solana. Default "1"' } }, required: [] }
+  },
+  {
+    name: 'get_signals',
+    description: 'Get smart money / whale / KOL trading signals. Use when user asks about whale movements, smart money, what big traders are buying.',
+    input_schema: { type: 'object', properties: { chain: { type: 'string', description: 'Chain index, default "1"' }, wallet_type: { type: 'string', description: '"smart_money", "kol", or "whale". Default "smart_money"' } }, required: [] }
+  },
+  {
+    name: 'get_leaderboard',
+    description: 'Get top traders ranked by profit (PnL). Use when user asks about best traders, top performers, or leaderboard.',
+    input_schema: { type: 'object', properties: { chain: { type: 'string', description: 'Chain index, default "1"' } }, required: [] }
+  },
+  {
+    name: 'get_meme_tokens',
+    description: 'Scan new meme token launches with dev reputation and rug detection. Use when user asks about new meme coins, meme launches, or rug checks.',
+    input_schema: { type: 'object', properties: { chain: { type: 'string', description: 'Chain index, default "501" (Solana)' }, stage: { type: 'string', description: '"NEW", "GRADUATING", or "GRADUATED". Default "NEW"' } }, required: [] }
+  },
+  {
+    name: 'scan_token_security',
+    description: 'Scan a token contract for security risks. Use when user asks if a token is safe, about risks, or contract security. Returns risk level and warnings.',
+    input_schema: { type: 'object', properties: { token: { type: 'string', description: 'Token name, symbol, or contract address' }, chain: { type: 'string', description: 'Chain index, default "1"' } }, required: ['token'] }
+  },
+  {
+    name: 'get_portfolio',
+    description: 'Analyze wallet holdings and portfolio value across chains. Use when user asks about wallet balance, holdings, or portfolio. Needs a wallet address (0x...).',
+    input_schema: { type: 'object', properties: { address: { type: 'string', description: 'Wallet address (0x...)' }, chains: { type: 'string', description: 'Comma-separated chain indices, default "1,196,501"' } }, required: ['address'] }
+  },
+  {
+    name: 'get_swap_quote',
+    description: 'Get DEX swap price quote across 500+ liquidity sources. Use when user asks about swap price, exchange rate, or how much they would get.',
+    input_schema: { type: 'object', properties: { chain: { type: 'string', description: 'Chain index, default "196"' }, from_token: { type: 'string', description: 'From token address' }, to_token: { type: 'string', description: 'To token address' }, amount: { type: 'string', description: 'Amount in wei' } }, required: [] }
+  },
+  {
+    name: 'get_gas_price',
+    description: 'Get current gas prices on a chain. Use when user asks about gas fees or transaction costs.',
+    input_schema: { type: 'object', properties: { chain: { type: 'string', description: 'Chain index, default "196"' } }, required: [] }
+  },
+];
+
+// Execute a single tool call and return result
+async function executeAskTool(name, input) {
+  try {
+    switch (name) {
+      case 'get_token_price': return JSON.stringify(await getTokenPrice(input.token) || { error: 'No price data found' });
+      case 'get_token_info': return JSON.stringify(await getTokenInfo(input.token) || { error: 'No token info found' });
+      case 'get_kline': return JSON.stringify(await getKline(input.token, '1D', 7) || { error: 'No kline data found' });
+      case 'get_hot_tokens': return JSON.stringify(await getHotTokens(input.chain || '1') || { error: 'No hot tokens found' });
+      case 'get_signals': {
+        const walletType = { smart_money: '1', kol: '2', whale: '3' }[input.wallet_type] || '1';
+        return JSON.stringify(await getSignals(input.chain || '1', walletType) || { error: 'No signals found' });
+      }
+      case 'get_leaderboard': return JSON.stringify(await getLeaderboard(input.chain || '1', '4', '1') || { error: 'No leaderboard data' });
+      case 'get_meme_tokens': return JSON.stringify(await getMemePumpTokens(input.chain || '501', input.stage || 'NEW') || { error: 'No meme tokens found' });
+      case 'scan_token_security': {
+        const token = await resolveToken(input.token);
+        return JSON.stringify(await scanTokenSecurity(token.chain, token.address) || { error: 'Security scan failed' });
+      }
+      case 'get_portfolio': return JSON.stringify(await getPortfolioValue(input.address, input.chains || '1,196,501') || { error: 'No portfolio data' });
+      case 'get_swap_quote': return JSON.stringify(await getSwapQuote(input.chain || '196', input.from_token || '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee', input.to_token || USDC_ADDRESS, input.amount || '1000000000000000000') || { error: 'No swap quote' });
+      case 'get_gas_price': return JSON.stringify(await getGasPrice(input.chain || '196') || { error: 'No gas data' });
+      default: return JSON.stringify({ error: `Unknown tool: ${name}` });
+    }
+  } catch (err) {
+    return JSON.stringify({ error: err.message });
+  }
+}
+
 app.get('/api/ask', x402Guard('/api/ask'), async (req, res) => {
   const question = req.query.q || '';
   if (!question) return res.status(400).json({ error: 'q parameter required' });
   log(`/api/ask: "${question}"`);
 
-  // Step 1: Let Claude decide which tools to use
-  const planResponse = await askClaude(
-    `You are an AI agent orchestrator. Given a user question, decide which data tools to call.
-Available tools (return as JSON array of tool names):
-- "price" — get token price (needs: token name)
-- "tokenInfo" — get market cap, volume, 24h change (needs: token name)
-- "kline" — get 7-day price chart (needs: token name)
-- "hotTokens" — get trending tokens
-- "signals" — get smart money/whale buy signals (needs: chain, default "1")
-- "leaderboard" — get top traders ranked by PnL
-- "memeTokens" — scan new meme token launches (needs: chain, default "501")
-- "security" — scan token contract for risks (needs: chain + address)
-- "portfolio" — analyze wallet holdings (needs: wallet address)
-- "swapQuote" — get DEX swap price quote
-- "gasPrice" — get current gas prices (needs: chain)
+  if (!claude) return res.status(500).json({ error: 'Claude API not configured' });
 
-Return ONLY a JSON object like: {"tools":["price","signals","security"],"token":"PEPE","chain":"1","address":""}
-No explanation, just JSON.`,
-    question
-  );
+  const MAX_ROUNDS = 6;
+  const allToolsUsed = [];
+  const allToolData = {};
+  let messages = [{ role: 'user', content: question }];
 
-  // Parse Claude's tool selection
-  let plan = { tools: ['price'], token: 'BTC', chain: '1', address: '' };
-  try {
-    const jsonMatch = planResponse.match(/\{[\s\S]*\}/);
-    if (jsonMatch) plan = JSON.parse(jsonMatch[0]);
-  } catch { /* use default */ }
+  // Agentic loop: continue while stop_reason is "tool_use", max 6 rounds
+  let finalAnswer = '';
+  for (let round = 0; round < MAX_ROUNDS; round++) {
+    log(`  Round ${round + 1}...`);
 
-  log(`  Plan: ${JSON.stringify(plan)}`);
+    const response = await claude.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 2048,
+      system: 'You are a full-stack AI agent on X Layer with access to real-time blockchain data from OKX OnchainOS. Use the available tools to gather data, then provide a clear, comprehensive answer. Be specific with numbers. Use bullet points for clarity. IMPORTANT: Reply in the same language as the user\'s question.',
+      tools: ASK_TOOLS,
+      messages,
+    });
 
-  // Step 2: Execute selected tools in parallel
-  const toolResults = {};
-  const tasks = [];
+    // Collect text and tool_use blocks from response
+    const assistantContent = response.content;
+    messages.push({ role: 'assistant', content: assistantContent });
 
-  if (plan.tools.includes('price') && plan.token) {
-    tasks.push(getTokenPrice(plan.token).then(r => toolResults.price = r));
-  }
-  if (plan.tools.includes('tokenInfo') && plan.token) {
-    tasks.push(getTokenInfo(plan.token).then(r => toolResults.tokenInfo = r));
-  }
-  if (plan.tools.includes('kline') && plan.token) {
-    tasks.push(getKline(plan.token, '1D', 7).then(r => toolResults.kline = r));
-  }
-  if (plan.tools.includes('hotTokens')) {
-    tasks.push(getHotTokens(plan.chain || '1').then(r => toolResults.hotTokens = r));
-  }
-  if (plan.tools.includes('signals')) {
-    tasks.push(getSignals(plan.chain || '1', '1').then(r => toolResults.signals = r));
-  }
-  if (plan.tools.includes('leaderboard')) {
-    tasks.push(getLeaderboard(plan.chain || '1', '4', '1').then(r => toolResults.leaderboard = r));
-  }
-  if (plan.tools.includes('memeTokens')) {
-    tasks.push(getMemePumpTokens(plan.chain || '501', 'NEW').then(r => toolResults.memeTokens = r));
-  }
-  if (plan.tools.includes('security') && (plan.address || plan.token)) {
-    const token = await resolveToken(plan.token || '');
-    tasks.push(scanTokenSecurity(token.chain, token.address).then(r => toolResults.security = r));
-  }
-  if (plan.tools.includes('portfolio') && plan.address) {
-    tasks.push(getPortfolioValue(plan.address).then(r => toolResults.portfolio = r));
-  }
-  if (plan.tools.includes('swapQuote')) {
-    tasks.push(getSwapQuote(plan.chain || '196', '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee', USDC_ADDRESS, '1000000000000000000').then(r => toolResults.swapQuote = r));
-  }
-  if (plan.tools.includes('gasPrice')) {
-    tasks.push(getGasPrice(plan.chain || '196').then(r => toolResults.gasPrice = r));
+    if (response.stop_reason === 'end_turn') {
+      // Claude is done — extract final text answer
+      for (const block of assistantContent) {
+        if (block.type === 'text') finalAnswer += block.text;
+      }
+      log(`  Done after ${round + 1} round(s)`);
+      break;
+    }
+
+    if (response.stop_reason === 'tool_use') {
+      // Execute all requested tools in parallel
+      const toolUseBlocks = assistantContent.filter(b => b.type === 'tool_use');
+      const toolResults = await Promise.all(
+        toolUseBlocks.map(async (block) => {
+          log(`    Tool: ${block.name}(${JSON.stringify(block.input)})`);
+          allToolsUsed.push(block.name);
+          const result = await executeAskTool(block.name, block.input);
+          try { allToolData[block.name] = JSON.parse(result); } catch { allToolData[block.name] = result; }
+          return { type: 'tool_result', tool_use_id: block.id, content: result };
+        })
+      );
+      messages.push({ role: 'user', content: toolResults });
+    }
   }
 
-  await Promise.all(tasks);
-
-  log(`  Tools executed: ${Object.keys(toolResults).join(', ')}`);
-
-  // Step 3: Claude synthesizes everything into one answer
-  const dataContext = Object.entries(toolResults)
-    .filter(([, v]) => v !== null)
-    .map(([k, v]) => `[${k}]: ${JSON.stringify(v).slice(0, 500)}`)
-    .join('\n\n');
-
-  const answer = await askClaude(
-    `You are a full-stack AI agent on X Layer with access to real-time blockchain data from OKX OnchainOS. You have just gathered data from multiple tools to answer the user's question. Synthesize all the data into one clear, comprehensive answer. Be specific with numbers. Use bullet points for clarity. IMPORTANT: Reply in the same language as the user's question.`,
-    `User question: "${question}"\n\nData gathered:\n${dataContext || 'No data available'}\n\nGive a comprehensive answer based on all available data.`
-  );
+  if (!finalAnswer) finalAnswer = '(Reached maximum rounds without a final answer)';
 
   const response = {
     agent: state.agentName, type: 'ask', question,
-    toolsUsed: Object.keys(toolResults),
-    data: toolResults,
-    answer,
-    poweredBy: { orchestration: 'Claude AI', data: 'OKX OnchainOS (' + Object.keys(toolResults).join(', ') + ')' },
+    toolsUsed: [...new Set(allToolsUsed)],
+    data: allToolData,
+    answer: finalAnswer,
+    poweredBy: { orchestration: 'Claude AI (native tool_use)', data: 'OKX OnchainOS (' + [...new Set(allToolsUsed)].join(', ') + ')' },
     timestamp: new Date().toISOString(),
   };
   if (req.x402Settlement) { response.payment = req.x402Settlement; res.setHeader('PAYMENT-RESPONSE', Buffer.from(JSON.stringify(req.x402Settlement)).toString('base64')); }
