@@ -1178,27 +1178,13 @@ const SEL = {
   getAgentCount:      '0x91cab63e',
   getAgent:           '0xfb3551ff',
   getAgentsPaginated: '0x29a26738',
-  isRegistered:       '0xc3c5a547',
   registerAgent:      '0x690535b0',
   activateAgent:      '0xd11257d0',
   deactivateAgent:    '0x11ba6b4a',
-  // TaskManager
+  // TaskManager (used by activity feed)
   getTaskCount:       '0xc17a340e',
   getTask:            '0x1d65e77e',
-  getTasksByClient:   '0xb1407faa',
-  getTasksByAgent:    '0xbb7b3638',
-  createTask:         '0xfd24bf4b',
-  acceptTask:         '0x1bf6912d',
-  completeTask:       '0x74aaa760',
-  approveTask:        '0x0a07fae6',
-  disputeTask:        '0x97d9c23e',
-  cancelTask:         '0x7eec20a8',
-  rateAgent:          '0x1ad1b832',
-  // ReputationEngine
-  getReputation:      '0x9c89a0e2',
   // ERC-20
-  approve:            '0x095ea7b3',
-  allowance:          '0xdd62ed3e',
   balanceOf:          '0x70a08231',
 };
 
@@ -2008,7 +1994,7 @@ async function executeX402(baseUrl, path, epId, payTo, usdcAddr, amountRaw, agen
       else if (data.gas) resultText = JSON.stringify(data.gas, null, 2);
       else resultText = JSON.stringify(data, null, 2);
 
-      resultDiv.innerHTML = '<div style="color:var(--success);font-weight:600;margin-bottom:8px">Payment settled (zero gas) ' + (data.payment?.amount || '') + '</div>' + resultText + txLink;
+      resultDiv.innerHTML = '<div style="color:var(--success);font-weight:600;margin-bottom:8px">Payment settled (zero gas) ' + escapeHtml(data.payment?.amount || '') + '</div><div style="white-space:pre-wrap">' + escapeHtml(resultText) + '</div>' + txLink;
 
       // Append rating UI as DOM (avoids innerHTML quote conflicts)
       if (txHash && agentId != null) {
@@ -2526,205 +2512,16 @@ function loadX402History() {
           </div>
           <span style="font-size:.78rem;color:var(--text-muted)">${timeStr}</span>
         </div>
-        <div style="font-size:.88rem;color:var(--text-primary);font-weight:600;margin-bottom:6px">Q: ${(h.question || '').slice(0, 100)}</div>
-        <div style="font-size:.83rem;color:var(--text-secondary);white-space:pre-wrap;line-height:1.5">${answerPreview}</div>
+        <div style="font-size:.88rem;color:var(--text-primary);font-weight:600;margin-bottom:6px">Q: ${escapeHtml((h.question || '').slice(0, 100))}</div>
+        <div class="history-answer" style="font-size:.83rem;color:var(--text-secondary);white-space:pre-wrap;line-height:1.5">${escapeHtml(answerPreview)}</div>
         <div style="margin-top:8px;display:flex;justify-content:space-between;align-items:center">
           ${txLink}
-          <button class="btn btn-secondary btn-sm" style="font-size:.75rem;padding:4px 10px" onclick="this.parentElement.previousElementSibling.textContent='${(h.answer || '').replace(/'/g, "\\'")}';this.textContent='Expanded'">Show full</button>
+          <button class="btn btn-secondary btn-sm" style="font-size:.75rem;padding:4px 10px" onclick="this.parentElement.previousElementSibling.textContent=this.getAttribute('data-full');this.textContent='Expanded'" data-full="${escapeHtml(h.answer || '')}">Show full</button>
         </div>
       </div>`;
   }).join('');
 }
 
-/* Old task management code removed — x402 history replaces it */
-function _unused_renderTaskCard(t) {
-  const payUsdc = (Number(t.payment) / 1e6).toFixed(2);
-  const stateLabel = TASK_STATES[t.state] || 'Unknown';
-  const stateCss = TASK_CSS[t.state] || 'created';
-  const isClient = userAccount && t.client.toLowerCase() === userAccount.toLowerCase();
-  const isAgent  = userAccount && t.agent.toLowerCase() === userAccount.toLowerCase();
-  const createdDate = new Date(t.createdAt * 1000).toLocaleString();
-  const otherAddr = isClient ? t.agent : t.client;
-  const otherLabel = isClient ? 'Agent' : 'Client';
-
-  let actions = '';
-  if (isAgent && t.state === 0) {
-    actions += `<button class="btn btn-success btn-sm" onclick="doAcceptTask(${t.id})">Accept Task</button>`;
-  }
-  if (isAgent && t.state === 1) {
-    actions += `<button class="btn btn-primary btn-sm" onclick="doCompleteTask(${t.id})">Submit Result</button>`;
-  }
-  if (isClient && t.state === 2) {
-    actions += `<button class="btn btn-success btn-sm" onclick="doApproveTask(${t.id})">Approve</button>`;
-    actions += `<button class="btn btn-danger btn-sm" onclick="doDisputeTask(${t.id})">Dispute</button>`;
-  }
-  if (isClient && t.state === 0) {
-    actions += `<button class="btn btn-danger btn-sm" onclick="doCancelTask(${t.id})">Cancel</button>`;
-  }
-
-  let rateHtml = '';
-  if (isClient && t.state === 3) {
-    rateHtml = `
-      <div class="rate-form" id="rateForm${t.id}" style="flex-wrap:wrap">
-        <span style="font-size:.85rem;color:var(--text-secondary)">Rate:</span>
-        <div class="star-select" id="starSelect${t.id}">
-          ${[1,2,3,4,5].map(s => `<button onclick="selectStar(${t.id},${s})" data-star="${s}">&#9734;</button>`).join('')}
-        </div>
-        <input class="form-input" type="text" id="rateComment${t.id}" placeholder="Optional review comment..." style="flex:1;min-width:140px;padding:8px 12px;font-size:.82rem">
-        <button class="btn btn-primary btn-sm" disabled>Rating via x402 only</button>
-      </div>`;
-  }
-
-  return `
-    <div class="task-card">
-      <div class="task-top">
-        <div>
-          <span class="task-id">Task #${t.id}</span>
-        </div>
-        <span class="status-badge status-${stateCss}">${stateLabel}</span>
-      </div>
-      <div class="task-desc">${escapeHtml(t.description || 'No description')}</div>
-      <div class="task-info">
-        <span><strong>${payUsdc}</strong> USDC</span>
-        <span>${otherLabel}: ${otherAddr.slice(0,6)}...${otherAddr.slice(-4)}</span>
-        <span>${createdDate}</span>
-      </div>
-      ${t.resultHash ? '<div style="font-size:.82rem;color:var(--text-muted);margin-bottom:8px">Result: ' + escapeHtml(t.resultHash.slice(0,60)) + '</div>' : ''}
-      <div class="task-actions">${actions}</div>
-      ${rateHtml}
-    </div>
-  `;
-}
-
-/* Selected star tracking */
-const selectedStars = {};
-
-function selectStar(taskId, star) {
-  selectedStars[taskId] = star;
-  const container = document.getElementById('starSelect' + taskId);
-  if (!container) return;
-  container.querySelectorAll('button').forEach(btn => {
-    const s = parseInt(btn.getAttribute('data-star'));
-    btn.innerHTML = s <= star ? '&#9733;' : '&#9734;';
-    btn.classList.toggle('active', s <= star);
-  });
-}
-
-/* =================================================================
-   TASK ACTIONS
-   ================================================================= */
-async function doAcceptTask(taskId) {
-  try {
-    showToast('Accepting task...', 'info');
-    const data = SEL.acceptTask + encodeUint(taskId);
-    const txHash = await sendTx(CONTRACTS.TaskManager, data);
-    await waitForTx(txHash);
-    showToast('Task accepted!', 'success', txHash);
-    loadX402History();
-  } catch(e) { showToast('Failed: ' + e.message, 'error'); }
-}
-
-let pendingCompleteTaskId = null;
-
-function doCompleteTask(taskId) {
-  pendingCompleteTaskId = taskId;
-  document.getElementById('resultHashInput').value = '';
-  document.getElementById('resultHashStatus').textContent = '';
-  document.getElementById('resultHashSubmitBtn').disabled = false;
-  document.getElementById('resultHashSubmitBtn').textContent = 'Submit Result';
-  document.getElementById('resultHashModal').classList.remove('hidden');
-}
-
-function closeResultHashModal() {
-  document.getElementById('resultHashModal').classList.add('hidden');
-  pendingCompleteTaskId = null;
-}
-
-async function confirmCompleteTask() {
-  const resultHash = document.getElementById('resultHashInput').value.trim();
-  if (!resultHash) { showToast('Please enter a deliverable reference', 'error'); return; }
-  const btn = document.getElementById('resultHashSubmitBtn');
-  const status = document.getElementById('resultHashStatus');
-  try {
-    btn.disabled = true;
-    btn.innerHTML = '<span class="spinner"></span> Submitting...';
-    status.textContent = 'Sending transaction...';
-    showToast('Submitting result...', 'info');
-
-    const resHex = utf8ToHex(resultHash);
-    const resPad = resHex.padEnd(Math.ceil(resHex.length / 64) * 64 || 64, '0');
-
-    const data = SEL.completeTask
-      + encodeUint(pendingCompleteTaskId)
-      + encodeUint(64)
-      + encodeUint(resHex.length / 2)
-      + resPad;
-
-    const txHash = await sendTx(CONTRACTS.TaskManager, data);
-    status.textContent = 'Waiting for confirmation...';
-    await waitForTx(txHash);
-    showToast('Result submitted!', 'success', txHash);
-    closeResultHashModal();
-    loadX402History();
-  } catch(e) {
-    showToast('Failed: ' + e.message, 'error');
-    status.textContent = 'Failed: ' + e.message;
-    btn.disabled = false;
-    btn.textContent = 'Submit Result';
-  }
-}
-
-async function doApproveTask(taskId) {
-  // Find the task to show payment amount in confirmation
-  const taskList = document.getElementById('taskList');
-  const taskCards = taskList ? taskList.querySelectorAll('.task-card') : [];
-  let paymentLabel = '';
-  taskCards.forEach(card => {
-    const idSpan = card.querySelector('.task-id');
-    if (idSpan && idSpan.textContent.includes('#' + taskId)) {
-      const info = card.querySelector('.task-info span strong');
-      if (info) paymentLabel = info.textContent + ' USDC';
-    }
-  });
-  const confirmMsg = paymentLabel
-    ? 'Approve this task and release ' + paymentLabel + ' to the agent?'
-    : 'Approve this task and release payment to the agent?';
-  if (!confirm(confirmMsg)) return;
-  try {
-    showToast('Approving task...', 'info');
-    const data = SEL.approveTask + encodeUint(taskId);
-    const txHash = await sendTx(CONTRACTS.TaskManager, data);
-    await waitForTx(txHash);
-    showToast('Task approved! Payment released.', 'success', txHash);
-    loadX402History();
-    loadStats();
-  } catch(e) { showToast('Failed: ' + e.message, 'error'); }
-}
-
-async function doDisputeTask(taskId) {
-  if (!confirm('Are you sure you want to dispute this task?')) return;
-  try {
-    showToast('Disputing task...', 'info');
-    const data = SEL.disputeTask + encodeUint(taskId);
-    const txHash = await sendTx(CONTRACTS.TaskManager, data);
-    await waitForTx(txHash);
-    showToast('Task disputed.', 'info', txHash);
-    loadX402History();
-  } catch(e) { showToast('Failed: ' + e.message, 'error'); }
-}
-
-async function doCancelTask(taskId) {
-  if (!confirm('Cancel this task and get a refund?')) return;
-  try {
-    showToast('Cancelling task...', 'info');
-    const data = SEL.cancelTask + encodeUint(taskId);
-    const txHash = await sendTx(CONTRACTS.TaskManager, data);
-    await waitForTx(txHash);
-    showToast('Task cancelled. USDC refunded.', 'success', txHash);
-    loadX402History();
-    loadStats();
-  } catch(e) { showToast('Failed: ' + e.message, 'error'); }
-}
 
 
 /* =================================================================
@@ -2889,10 +2686,6 @@ window.addEventListener('load', async () => {
 });
 
 
-/* Close result hash modal on overlay click */
-document.getElementById('resultHashModal').addEventListener('click', function(e) {
-  if (e.target === this) closeResultHashModal();
-});
 
 /* Close modal on Escape */
 document.addEventListener('keydown', function(e) {
