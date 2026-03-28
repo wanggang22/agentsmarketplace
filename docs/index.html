@@ -1425,9 +1425,9 @@ function updateWalletUI() {
     btn.disabled = false;
     btn.style.opacity = '1';
     btn.onclick = disconnectWallet;
-    document.getElementById('dashboardNotConnected').classList.add('hidden');
-    document.getElementById('dashboardContent').classList.remove('hidden');
-    document.getElementById('myAgentsBtn').style.display = '';
+    const dnc = document.getElementById('dashboardNotConnected'); if (dnc) dnc.classList.add('hidden');
+    const dc = document.getElementById('dashboardContent'); if (dc) dc.classList.remove('hidden');
+    const mab = document.getElementById('myAgentsBtn'); if (mab) mab.style.display = '';
   }
 }
 
@@ -1455,9 +1455,9 @@ function disconnectWallet() {
   display.classList.add('hidden');
   btn.textContent = 'Connect Wallet';
   btn.onclick = connectWallet;
-  document.getElementById('dashboardNotConnected').classList.remove('hidden');
-  document.getElementById('dashboardContent').classList.add('hidden');
-  document.getElementById('myAgentsBtn').style.display = 'none';
+  const dnc2 = document.getElementById('dashboardNotConnected'); if (dnc2) dnc2.classList.remove('hidden');
+  const dc2 = document.getElementById('dashboardContent'); if (dc2) dc2.classList.add('hidden');
+  const mab2 = document.getElementById('myAgentsBtn'); if (mab2) mab2.style.display = 'none';
   showToast('Wallet disconnected', 'success');
 }
 
