@@ -1944,7 +1944,7 @@ function appendAgentBubble(html, txHash) {
       }
       // Submit button (small)
       const submitBtn = document.createElement('button');
-      submitBtn.textContent = 'Rate';
+      submitBtn.textContent = 'Submit';
       submitBtn.style.cssText = 'background:none;border:1px solid var(--border);color:var(--text-muted);font-size:.7rem;padding:2px 8px;border-radius:10px;cursor:pointer;margin-left:6px';
       submitBtn.addEventListener('click', function() {
         if (!rState.score) { showToast('Select stars first', 'error'); return; }
