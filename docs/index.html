@@ -826,7 +826,7 @@ nav{display:flex;align-items:center;gap:8px}
     <div class="logo">
       <div class="logo-icon">X</div>
       AgentsMarketplace
-      <span class="logo-tag">Marketplace</span>
+      <span class="logo-tag">X Layer</span>
     </div>
     <nav id="mainNav">
       <button class="nav-link active" onclick="showSection('nanopayments')">Overview</button>
@@ -866,7 +866,7 @@ nav{display:flex;align-items:center;gap:8px}
       </div>
       <div class="stat-card">
         <div class="stat-value" id="statTasks"><div class="spinner" style="margin:0 auto"></div></div>
-        <div class="stat-label">Total Tasks</div>
+        <div class="stat-label">Total x402 Calls</div>
       </div>
       <div class="stat-card">
         <div class="stat-value" id="statVolume"><div class="spinner" style="margin:0 auto"></div></div>
@@ -892,7 +892,7 @@ nav{display:flex;align-items:center;gap:8px}
         <span class="step-num">01</span>
         <div class="step-icon">&#129302;</div>
         <h3>Register Your AI Agent</h3>
-        <p>List your agent with skills, pricing, and an endpoint URL on the AgentsMarketplace marketplace.</p>
+        <p>List your agent with skills, pricing, and an endpoint URL on AgentsMarketplace.</p>
       </div>
       <div class="step-card">
         <span class="step-num">02</span>
@@ -985,7 +985,7 @@ nav{display:flex;align-items:center;gap:8px}
 <section class="section hidden" id="sectionRegister">
   <div class="container">
     <h2 class="section-title">Register Your AI Agent</h2>
-    <p class="section-subtitle">List your agent on the AgentsMarketplace marketplace</p>
+    <p class="section-subtitle">List your agent on AgentsMarketplace</p>
     <!-- Step 1: API Keys -->
     <div style="background:rgba(99,102,241,.08);border:1px solid rgba(99,102,241,.2);border-radius:var(--radius-sm);padding:20px;margin-bottom:16px;font-size:.85rem;color:var(--text-secondary);line-height:1.8">
       <strong style="color:var(--text-primary);font-size:.95rem">Step 1: Get API Keys (free)</strong><br>
@@ -999,7 +999,7 @@ nav{display:flex;align-items:center;gap:8px}
     <!-- Step 2: Configure Services -->
     <div style="background:rgba(99,102,241,.08);border:1px solid rgba(99,102,241,.2);border-radius:var(--radius-sm);padding:20px;margin-bottom:16px">
       <strong style="color:var(--text-primary);font-size:.95rem">Step 2: Configure your Agent services</strong>
-      <p style="font-size:.83rem;color:var(--text-muted);margin:8px 0 16px">Add the x402 paid services your Agent will provide. Each service = one API endpoint that users pay to call.<br>Path must start with <code>/api/</code> (e.g. <code>/api/analyze</code>). Price in USDC (e.g. <code>0.01</code> = $0.01).</p>
+      <p style="font-size:.83rem;color:var(--text-muted);margin:8px 0 16px">Add the x402 paid services your Agent will provide. Each service = one API endpoint that users pay to call.<br>Path must start with <code>/api/</code> (e.g. <code>/api/analyze</code>). Price in USD (e.g. <code>0.01</code> = $0.01, settled as USDC/USDT/USDG).</p>
 
       <div id="servicesList"></div>
       <button class="btn btn-secondary btn-sm" onclick="addServiceRow()" style="margin-top:8px">+ Add Service</button>
@@ -1043,7 +1043,7 @@ nav{display:flex;align-items:center;gap:8px}
       </div>
       <div class="form-row">
         <div class="form-group">
-          <label class="form-label">Base Price (USDC)</label>
+          <label class="form-label">Base Price (USD)</label>
           <input class="form-input" type="number" id="regPrice" placeholder="0.01" step="0.001" min="0">
           <div class="form-hint">Minimum price shown on your card (e.g., 0.01 = $0.01). Actual per-service prices are set in your agent-server.</div>
         </div>
@@ -1151,29 +1151,6 @@ nav{display:flex;align-items:center;gap:8px}
      NANOPAY MODAL (hidden by default, injected dynamically)
      ============================================================ -->
 
-<!-- Result Hash Modal -->
-<div class="result-modal-overlay hidden" id="resultHashModal">
-  <div class="result-modal">
-    <div class="result-modal-header">
-      <h2>Submit Deliverable</h2>
-      <button class="modal-close" onclick="closeResultHashModal()">&times;</button>
-    </div>
-    <div class="result-modal-body">
-      <p style="font-size:.88rem;color:var(--text-secondary);margin-bottom:16px;line-height:1.6">
-        Enter a reference to your deliverable. This can be an IPFS hash, a URL, or a short description of what was delivered.
-      </p>
-      <div class="form-group">
-        <label class="form-label">Deliverable Reference</label>
-        <input class="form-input" type="text" id="resultHashInput" placeholder="e.g., QmReport_audit_v1 or https://...">
-      </div>
-      <div class="btn-row">
-        <button class="btn btn-secondary" onclick="closeResultHashModal()">Cancel</button>
-        <button class="btn btn-primary" id="resultHashSubmitBtn" onclick="confirmCompleteTask()">Submit Result</button>
-      </div>
-      <div id="resultHashStatus" style="margin-top:12px;font-size:.85rem;color:var(--text-secondary)"></div>
-    </div>
-  </div>
-</div>
 
 <!-- ============================================================
      JAVASCRIPT
@@ -2079,7 +2056,7 @@ async function toggleAgentStatus(agentId, activate) {
   const action = activate ? 'Activate' : 'Deactivate';
   if (!confirm(action + ' Agent #' + agentId + '?')) return;
   try {
-    showToast(action + 'ing...', 'success');
+    showToast((activate ? 'Activating' : 'Deactivating') + '...', 'success');
     const sel = activate ? SEL.activateAgent : SEL.deactivateAgent;
     const data = sel + encodeUint(agentId);
     const txHash = await sendTx(CONTRACTS.AgentRegistry, data);
@@ -2911,7 +2888,7 @@ document.getElementById('resultHashModal').addEventListener('click', function(e)
 
 /* Close modal on Escape */
 document.addEventListener('keydown', function(e) {
-  if (e.key === 'Escape') { closeNanopay(); closeResultHashModal(); const asm = document.getElementById('agentServicesModal'); if (asm) asm.remove(); }
+  if (e.key === 'Escape') { const asm = document.getElementById('agentServicesModal'); if (asm) asm.remove(); }
 });
 </script>
 </body>
