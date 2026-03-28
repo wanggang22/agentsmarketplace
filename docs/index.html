@@ -1930,11 +1930,12 @@ function appendAgentBubble(html, txHash) {
       for (let s = 1; s <= 5; s++) {
         (function(score) {
           const star = document.createElement('button');
+          star.className = 'chat-star';
           star.textContent = '\u2606';
           star.style.cssText = 'background:none;border:none;font-size:1.1rem;cursor:pointer;color:var(--text-muted);padding:0 1px;transition:color .15s';
           star.addEventListener('click', function() {
             rState.score = score;
-            rateWrap.querySelectorAll('button').forEach((b, i) => {
+            rateWrap.querySelectorAll('.chat-star').forEach((b, i) => {
               b.textContent = i < score ? '\u2605' : '\u2606';
               b.style.color = i < score ? '#f59e0b' : 'var(--text-muted)';
             });
@@ -1944,7 +1945,7 @@ function appendAgentBubble(html, txHash) {
       }
       // Submit button (small)
       const submitBtn = document.createElement('button');
-      submitBtn.textContent = 'Submit';
+      submitBtn.textContent = 'Rate';
       submitBtn.style.cssText = 'background:none;border:1px solid var(--border);color:var(--text-muted);font-size:.7rem;padding:2px 8px;border-radius:10px;cursor:pointer;margin-left:6px';
       submitBtn.addEventListener('click', function() {
         if (!rState.score) { showToast('Select stars first', 'error'); return; }
@@ -1953,7 +1954,7 @@ function appendAgentBubble(html, txHash) {
         submitBtn.disabled = true;
         submitBtn.style.color = '#f59e0b';
         submitBtn.style.borderColor = '#f59e0b';
-        rateWrap.querySelectorAll('button:not(:last-child)').forEach(b => b.style.pointerEvents = 'none');
+        rateWrap.querySelectorAll('.chat-star').forEach(b => b.style.pointerEvents = 'none');
       });
       rateWrap.appendChild(submitBtn);
       footer.appendChild(rateWrap);
