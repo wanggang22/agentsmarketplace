@@ -1661,17 +1661,17 @@ async function loadAgents() {
         });
       }
 
+      // Read ratings from X402Rating contract
       await Promise.all(allAgents.map(async (ag) => {
         try {
-          const repData = SEL.getReputation + encodeAddress(ag.address);
-          const repRes = await rpcCall(CONTRACTS.ReputationEngine, repData);
-          const repRaw = repRes.replace(/^0x/, '');
-          const totalTasksRep = Number(decodeUint(repRaw, 0));
-          const avgX100 = Number(decodeUint(repRaw, 32));
-          const totalRatings = Number(decodeUint(repRaw, 64));
+          const statsData = '0x68091633' + encodeUint(ag.agentId);
+          const statsRes = await rpcCall(X402_RATING_CONTRACT, statsData);
+          const statsRaw = statsRes.replace(/^0x/, '');
+          const totalRatings = Number(decodeUint(statsRaw, 0));
+          const avgX100 = Number(decodeUint(statsRaw, 32));
           ag.rating = avgX100 / 100;
           ag.ratingCount = totalRatings;
-        } catch(e) { /* no rep data */ }
+        } catch(e) { /* no rating data */ }
       }));
 
       // Fetch x402 call counts from each agent's /status endpoint
