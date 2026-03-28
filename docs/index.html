@@ -1774,19 +1774,8 @@ async function tryX402Agent(endpoint, agentName, agentId) {
   }
 }
 
-// Slash command definitions for chat
-const SLASH_COMMANDS = [
-  { cmd: '/ask',       path: '/api/ask',       price: '$0.02',  amount: '20000', hint: 'Ask Anything', example: 'BTC能买吗' },
-  { cmd: '/analyze',   path: '/api/analyze',   price: '$0.01',  amount: '10000', hint: 'Market Analysis', example: '/analyze ETH' },
-  { cmd: '/translate', path: '/api/translate',  price: '$0.01',  amount: '10000', hint: 'Translation', example: '/translate hello world' },
-  { cmd: '/audit',     path: '/api/audit',      price: '$0.01',  amount: '10000', hint: 'Contract Review', example: '/audit 0x74b7...' },
-  { cmd: '/signals',   path: '/api/signals',    price: '$0.01',  amount: '10000', hint: 'Smart Money', example: '/signals 1' },
-  { cmd: '/trenches',  path: '/api/trenches',   price: '$0.01',  amount: '10000', hint: 'Meme Scanner', example: '/trenches 501' },
-  { cmd: '/swap',      path: '/api/swap',       price: '$0.002', amount: '2000',  hint: 'DEX Quote', example: '/swap 1000000000000000000' },
-  { cmd: '/portfolio', path: '/api/portfolio',   price: '$0.01',  amount: '10000', hint: 'Portfolio', example: '/portfolio 0x1234...' },
-  { cmd: '/security',  path: '/api/security',    price: '$0.01',  amount: '10000', hint: 'Security Scan', example: '/security 0x74b7...' },
-  { cmd: '/gas',       path: '/api/gas',         price: '$0.001', amount: '1000',  hint: 'Gas Price', example: '/gas 196' },
-];
+// Slash commands — dynamically built from each agent's /api response
+let SLASH_COMMANDS = [];
 
 // Current chat session state
 let chatState = { baseUrl: '', payTo: '', usdcAddr: '', agentId: null, agentName: '', messages: [], totalSpent: 0 };
@@ -1796,6 +1785,25 @@ function showAgentServicesModal(agentName, baseUrl, apiData, agentId) {
   const usdcAddr = (apiData.acceptedTokens && apiData.acceptedTokens[0]?.address) || '0x74b7F16337b8972027F6196A17a631aC6dE26d22';
 
   chatState = { baseUrl, payTo, usdcAddr, agentId, agentName, messages: [], totalSpent: 0 };
+
+  // Build slash commands from agent's /api endpoints
+  SLASH_COMMANDS = (apiData.endpoints || []).map(ep => {
+    const cmdName = '/' + ep.path.replace(/^\/api\//, '');
+    return {
+      cmd: cmdName,
+      path: ep.path,
+      price: ep.price || '$0.01',
+      amount: ep.priceRaw || '10000',
+      hint: (ep.description || ep.path).split(' — ')[0].split(' — ')[0],
+      example: cmdName + ' ' + (ep.path.includes('analyze') ? 'ETH' : ep.path.includes('translate') ? 'hello world' : ep.path.includes('audit') ? '0x...' : ep.path.includes('portfolio') ? '0x...' : ep.path.includes('security') ? '0x...' : ep.path.includes('gas') ? '196' : 'query'),
+    };
+  });
+
+  // Determine default command (first endpoint or /ask)
+  const defaultCmd = SLASH_COMMANDS.find(c => c.cmd === '/ask') || SLASH_COMMANDS[0];
+  chatState.defaultPath = defaultCmd?.path || '/api/ask';
+  chatState.defaultAmount = defaultCmd?.amount || '20000';
+  chatState.defaultPrice = defaultCmd?.price || '$0.02';
 
   // Load persisted conversation
   const storageKey = 'x402_chat_' + (agentId ?? 'default');
@@ -1814,7 +1822,7 @@ function showAgentServicesModal(agentName, baseUrl, apiData, agentId) {
       <div style="display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-bottom:1px solid var(--border)">
         <div style="display:flex;align-items:center;gap:10px">
           <span style="font-weight:700;font-size:1.05rem;color:var(--text-primary)">${escapeHtml(agentName)}</span>
-          <span style="font-size:.75rem;color:var(--cyan);background:rgba(6,182,212,.1);padding:2px 8px;border-radius:10px">⚡ $0.02/msg</span>
+          <span style="font-size:.75rem;color:var(--cyan);background:rgba(6,182,212,.1);padding:2px 8px;border-radius:10px">⚡ from ${SLASH_COMMANDS.length > 0 ? SLASH_COMMANDS.reduce((min, c) => { const p = parseFloat(c.price.replace('$','')); return p < min ? p : min; }, 999).toFixed(3) : '0.01'}/msg</span>
         </div>
         <div style="display:flex;align-items:center;gap:12px">
           <button style="font-size:.75rem;color:var(--text-muted);background:none;border:1px solid var(--border);padding:4px 10px;border-radius:var(--radius-sm);cursor:pointer" onclick="clearChat()">Clear</button>
@@ -1826,7 +1834,7 @@ function showAgentServicesModal(agentName, baseUrl, apiData, agentId) {
       <div id="slashDropdown" style="display:none;position:absolute;bottom:80px;left:20px;right:20px;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-sm);max-height:240px;overflow-y:auto;z-index:10;box-shadow:0 -4px 20px rgba(0,0,0,.3)"></div>
       <div style="border-top:1px solid var(--border);padding:12px 20px">
         <div style="display:flex;gap:8px">
-          <input id="chatInput" class="form-input" type="text" placeholder="Ask anything... (⚡$0.02)  Type / for commands" style="flex:1;padding:10px 14px;font-size:.9rem" onkeydown="handleChatKeydown(event)" oninput="handleChatInput(event)">
+          <input id="chatInput" class="form-input" type="text" placeholder="Ask anything... (⚡${chatState.defaultPrice || '$0.02'})  Type / for commands" style="flex:1;padding:10px 14px;font-size:.9rem" onkeydown="handleChatKeydown(event)" oninput="handleChatInput(event)">
           <button class="btn btn-primary" onclick="sendChatMessage()" style="padding:10px 20px">Send</button>
         </div>
         <div id="chatStats" style="font-size:.75rem;color:var(--text-muted);margin-top:6px;display:flex;justify-content:space-between">
@@ -2011,8 +2019,8 @@ function parseChatInput(text) {
       return { path: c.path, amount: c.amount, price: c.price, query, display: trimmed };
     }
   }
-  // Default: /api/ask
-  return { path: '/api/ask', amount: '20000', price: '$0.02', query: trimmed, display: trimmed };
+  // Default: first endpoint (or /api/ask)
+  return { path: chatState.defaultPath || '/api/ask', amount: chatState.defaultAmount || '20000', price: chatState.defaultPrice || '$0.02', query: trimmed, display: trimmed };
 }
 
 // Build query params for a given path
