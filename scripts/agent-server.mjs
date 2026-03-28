@@ -60,8 +60,8 @@ const xLayer = defineChain({
 });
 
 const registryAbi = parseAbi([
-  'function isRegistered(address) view returns (bool)',
-  'function getAgent(address) view returns ((string name,string description,string endpoint,uint256 pricePerTask,string[] skillTags,bool active,uint256 registeredAt,uint256 totalTasks,uint256 totalEarned))',
+  'function getAgentsByOwner(address) view returns (uint256[])',
+  'function getAgent(uint256) view returns ((address owner,string name,string description,string endpoint,uint256 pricePerTask,string[] skillTags,bool active,uint256 registeredAt,uint256 totalTasks,uint256 totalEarned))',
 ]);
 
 
@@ -987,11 +987,11 @@ async function start() {
   console.log(`  Dashboard:   http://localhost:${PORT}\n`);
 
   try {
-    const isReg = await publicClient.readContract({ address: AGENT_REGISTRY, abi: registryAbi, functionName: 'isRegistered', args: [account.address] });
-    if (isReg) {
-      const info = await publicClient.readContract({ address: AGENT_REGISTRY, abi: registryAbi, functionName: 'getAgent', args: [account.address] });
+    const agentIds = await publicClient.readContract({ address: AGENT_REGISTRY, abi: registryAbi, functionName: 'getAgentsByOwner', args: [account.address] });
+    if (agentIds.length > 0) {
+      const info = await publicClient.readContract({ address: AGENT_REGISTRY, abi: registryAbi, functionName: 'getAgent', args: [agentIds[0]] });
       state.agentName = info.name;
-      log(`Registered as "${info.name}"`);
+      log(`Registered as "${info.name}" (agentId: ${agentIds[0]})`);
     } else {
       state.agentName = '(unregistered)';
       log('WARNING: Agent not registered.');
