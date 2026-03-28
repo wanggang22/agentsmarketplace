@@ -1527,17 +1527,27 @@ function showToast(msg, type = 'info', txHash = null) {
 async function loadStats() {
   try {
     await withTimeout((async () => {
+      // Agent count from chain
       const agentCountRes = await rpcCall(CONTRACTS.AgentRegistry, SEL.getAgentCount);
       const agentCount = Number(BigInt(agentCountRes));
       document.getElementById('statAgents').textContent = agentCount;
 
-      // Use getMarketStats() for efficient single-call stats (totalTasks, approvedTasks, volume)
-      const marketStatsRes = await rpcCall(CONTRACTS.TaskManager, '0xff4cd5b9');
-      const msRaw = marketStatsRes.replace(/^0x/, '');
-      const taskCount = Number(decodeUint(msRaw, 0));
-      const vol = Number(decodeUint(msRaw, 64)) / 1e6;
-      document.getElementById('statTasks').textContent = taskCount;
-      document.getElementById('statVolume').textContent = vol >= 1000 ? (vol/1000).toFixed(1) + 'K' : vol.toFixed(2);
+      // x402 stats: aggregate from all agents' /status endpoints
+      let totalCalls = 0;
+      let totalEarned = 0;
+      if (allAgents && allAgents.length > 0) {
+        await Promise.all(allAgents.map(async (ag) => {
+          if (!ag.endpoint) return;
+          try {
+            const resp = await fetch(ag.endpoint.replace(/\/$/, '') + '/status');
+            const data = await resp.json();
+            totalCalls += Number(data.x402Calls || 0);
+            totalEarned += parseFloat(data.x402Earned || '0');
+          } catch { /* agent offline */ }
+        }));
+      }
+      document.getElementById('statTasks').textContent = totalCalls;
+      document.getElementById('statVolume').textContent = totalEarned >= 1000 ? (totalEarned/1000).toFixed(1) + 'K' : totalEarned.toFixed(2);
     })(), 10000, 'Stats loading');
 
   } catch(e) {
@@ -2842,10 +2852,9 @@ function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
    INIT
    ================================================================= */
 window.addEventListener('load', async () => {
+  await loadAgents();
   loadStats();
-  loadAgents();
   loadActivity();
-  loadNanopayStats();
 
   if (window.ethereum) {
     try {
