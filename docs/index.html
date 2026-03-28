@@ -2209,18 +2209,16 @@ function encodeRateCall(agentId, score, comment, txHash) {
 }
 
 
-async function submitRating(agentId, score, comment, txHash, ratingDiv) {
+async function submitRating(agentId, score, comment, txHash, ratingContainer) {
   if (!window.ethereum || !userAccount) { showToast('Connect wallet first', 'error'); return; }
   try {
-    ratingDiv.querySelector('.rating-status').innerHTML = '<span style="color:var(--accent)">Submitting rating on-chain...</span>';
+    showToast('Signing rating on-chain...', 'success');
     const data = encodeRateCall(agentId, score, comment, txHash);
     const tx = await window.ethereum.request({ method: 'eth_sendTransaction', params: [{ from: userAccount, to: X402_RATING_CONTRACT, data, chainId: '0xc4' }] });
-    ratingDiv.querySelector('.rating-status').innerHTML = '<span style="color:var(--success)">Rating submitted on-chain! (' + score + '/5 ★)</span>';
-    ratingDiv.querySelectorAll('.star-btn').forEach(b => b.style.pointerEvents = 'none');
-    ratingDiv.querySelector('.btn-primary').style.display = 'none';
+    showToast('Rating submitted! ' + score + '/5 ★', 'success');
   } catch (err) {
-    if (err.code === 4001) ratingDiv.querySelector('.rating-status').innerHTML = '<span style="color:var(--text-muted)">Rating cancelled</span>';
-    else ratingDiv.querySelector('.rating-status').innerHTML = '<span style="color:var(--danger)">Rating failed: ' + err.message + '</span>';
+    if (err.code === 4001) showToast('Rating cancelled', 'error');
+    else showToast('Rating failed: ' + err.message, 'error');
   }
 }
 
