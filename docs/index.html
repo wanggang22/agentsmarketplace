@@ -2744,42 +2744,6 @@ async function doCancelTask(taskId) {
   } catch(e) { showToast('Failed: ' + e.message, 'error'); }
 }
 
-/* =================================================================
-   SUBMIT RATING - calls TaskManager.rateAgent(uint256 taskId, uint8 rating, string comment)
-   ================================================================= */
-async function submitRating(taskId) {
-  const rating = selectedStars[taskId];
-  if (!rating || rating < 1 || rating > 5) { showToast('Please select a rating (1-5 stars)', 'error'); return; }
-
-  try {
-    showToast('Submitting rating...', 'info');
-
-    const commentInput = document.getElementById('rateComment' + taskId);
-    const customComment = commentInput ? commentInput.value.trim() : '';
-    const comment = customComment || ('Rated ' + rating + '/5');
-    const commentHex = utf8ToHex(comment);
-    const commentPad = commentHex.padEnd(Math.ceil(commentHex.length / 64) * 64 || 64, '0');
-
-    /* TaskManager.rateAgent(uint256 taskId, uint8 rating, string comment)
-       Head: taskId, rating, offset to comment (3*32=96)
-       Then: string length + data */
-    const data = SEL.rateAgent
-      + encodeUint(taskId)
-      + encodeUint(rating)
-      + encodeUint(96)
-      + encodeUint(commentHex.length / 2)
-      + commentPad;
-
-    const txHash = await sendTx(CONTRACTS.TaskManager, data);
-    await waitForTx(txHash);
-    showToast('Rating submitted!', 'success', txHash);
-
-    const form = document.getElementById('rateForm' + taskId);
-    if (form) form.innerHTML = '<span style="color:var(--success);font-size:.85rem">Rating submitted. Thank you!</span>';
-  } catch(e) {
-    showToast('Rating failed: ' + e.message, 'error');
-  }
-}
 
 /* =================================================================
    ACTIVITY FEED
