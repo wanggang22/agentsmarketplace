@@ -1907,15 +1907,64 @@ function appendAgentBubble(html, txHash) {
   const div = document.createElement('div');
   div.style.cssText = 'align-self:flex-start;max-width:85%;padding:10px 14px;background:var(--bg-secondary);border:1px solid var(--border);border-radius:12px 12px 12px 2px;font-size:.88rem;color:var(--text-secondary);white-space:pre-wrap;word-break:break-word';
   div.innerHTML = escapeHtml(html).replace(/\n/g, '<br>');
+
+  // Footer: TX link + rating
   if (txHash) {
-    const link = document.createElement('div');
-    link.style.cssText = 'font-size:.72rem;margin-top:6px';
-    link.innerHTML = '<a href="https://www.okx.com/web3/explorer/xlayer/tx/' + txHash + '" target="_blank" rel="noopener" style="color:var(--success)">View TX</a>';
-    div.appendChild(link);
+    const footer = document.createElement('div');
+    footer.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-top:8px;padding-top:8px;border-top:1px solid var(--border)';
+
+    // TX link
+    const link = document.createElement('a');
+    link.href = 'https://www.okx.com/web3/explorer/xlayer/tx/' + txHash;
+    link.target = '_blank';
+    link.rel = 'noopener';
+    link.style.cssText = 'font-size:.72rem;color:var(--success)';
+    link.textContent = 'View TX';
+    footer.appendChild(link);
+
+    // Rating stars
+    if (chatState.agentId != null) {
+      const rateWrap = document.createElement('div');
+      rateWrap.style.cssText = 'display:flex;align-items:center;gap:2px';
+      const rState = { score: 0 };
+      for (let s = 1; s <= 5; s++) {
+        (function(score) {
+          const star = document.createElement('button');
+          star.textContent = '\u2606';
+          star.style.cssText = 'background:none;border:none;font-size:1.1rem;cursor:pointer;color:var(--text-muted);padding:0 1px;transition:color .15s';
+          star.addEventListener('click', function() {
+            rState.score = score;
+            rateWrap.querySelectorAll('button').forEach((b, i) => {
+              b.textContent = i < score ? '\u2605' : '\u2606';
+              b.style.color = i < score ? '#f59e0b' : 'var(--text-muted)';
+            });
+          });
+          rateWrap.appendChild(star);
+        })(s);
+      }
+      // Submit button (small)
+      const submitBtn = document.createElement('button');
+      submitBtn.textContent = 'Rate';
+      submitBtn.style.cssText = 'background:none;border:1px solid var(--border);color:var(--text-muted);font-size:.7rem;padding:2px 8px;border-radius:10px;cursor:pointer;margin-left:6px';
+      submitBtn.addEventListener('click', function() {
+        if (!rState.score) { showToast('Select stars first', 'error'); return; }
+        submitRating(chatState.agentId, rState.score, '', txHash, rateWrap.parentElement);
+        submitBtn.textContent = rState.score + '/5 ★';
+        submitBtn.disabled = true;
+        submitBtn.style.color = '#f59e0b';
+        submitBtn.style.borderColor = '#f59e0b';
+        rateWrap.querySelectorAll('button:not(:last-child)').forEach(b => b.style.pointerEvents = 'none');
+      });
+      rateWrap.appendChild(submitBtn);
+      footer.appendChild(rateWrap);
+    }
+
+    div.appendChild(footer);
   }
+
   container.appendChild(div);
   container.scrollTop = container.scrollHeight;
-  chatState.messages.push({ role: 'agent', content: html, timestamp: Date.now() });
+  chatState.messages.push({ role: 'agent', content: html, txHash, timestamp: Date.now() });
   saveChatHistory();
 }
 
