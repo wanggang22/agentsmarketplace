@@ -1404,7 +1404,7 @@ async function connectWallet() {
     await ensureXLayerNetwork();
     updateWalletUI();
     showToast('Wallet connected successfully', 'success');
-    loadDashboard();
+    loadX402History();
     loadUSDCBalance();
   } catch (e) {
     showToast('Failed to connect wallet: ' + e.message, 'error');
@@ -2638,7 +2638,7 @@ async function doAcceptTask(taskId) {
     const txHash = await sendTx(CONTRACTS.TaskManager, data);
     await waitForTx(txHash);
     showToast('Task accepted!', 'success', txHash);
-    loadDashboard();
+    loadX402History();
   } catch(e) { showToast('Failed: ' + e.message, 'error'); }
 }
 
@@ -2683,7 +2683,7 @@ async function confirmCompleteTask() {
     await waitForTx(txHash);
     showToast('Result submitted!', 'success', txHash);
     closeResultHashModal();
-    loadDashboard();
+    loadX402History();
   } catch(e) {
     showToast('Failed: ' + e.message, 'error');
     status.textContent = 'Failed: ' + e.message;
@@ -2714,7 +2714,7 @@ async function doApproveTask(taskId) {
     const txHash = await sendTx(CONTRACTS.TaskManager, data);
     await waitForTx(txHash);
     showToast('Task approved! Payment released.', 'success', txHash);
-    loadDashboard();
+    loadX402History();
     loadStats();
   } catch(e) { showToast('Failed: ' + e.message, 'error'); }
 }
@@ -2727,7 +2727,7 @@ async function doDisputeTask(taskId) {
     const txHash = await sendTx(CONTRACTS.TaskManager, data);
     await waitForTx(txHash);
     showToast('Task disputed.', 'info', txHash);
-    loadDashboard();
+    loadX402History();
   } catch(e) { showToast('Failed: ' + e.message, 'error'); }
 }
 
@@ -2739,7 +2739,7 @@ async function doCancelTask(taskId) {
     const txHash = await sendTx(CONTRACTS.TaskManager, data);
     await waitForTx(txHash);
     showToast('Task cancelled. USDC refunded.', 'success', txHash);
-    loadDashboard();
+    loadX402History();
     loadStats();
   } catch(e) { showToast('Failed: ' + e.message, 'error'); }
 }
@@ -2933,7 +2933,7 @@ window.addEventListener('load', async () => {
         userAccount = accounts[0];
         updateWalletUI();
         loadUSDCBalance();
-        loadDashboard();
+        loadX402History();
       }
     });
 
