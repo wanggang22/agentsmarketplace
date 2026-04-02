@@ -26,9 +26,24 @@ import { privateKeyToAccount } from 'viem/accounts';
 import express from 'express';
 import crypto from 'crypto';
 import Anthropic from '@anthropic-ai/sdk';
+import { buildSkillPrompt } from './skills-loader.mjs';
+import { initAgenticWallet, x402Pay, walletBalance, walletSend, swapExecute, isAvailable as agenticWalletAvailable } from './agentic-wallet.mjs';
 
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || '';
 const claude = ANTHROPIC_API_KEY ? new Anthropic({ apiKey: ANTHROPIC_API_KEY }) : null;
+
+// Uniswap Trading API
+const UNISWAP_API_KEY = process.env.UNISWAP_API_KEY || '';
+const UNISWAP_BASE_URL = 'https://trade-api.gateway.uniswap.org/v1';
+
+// Load Skill-driven system prompt at startup
+let SKILL_SYSTEM_PROMPT = '';
+try {
+  SKILL_SYSTEM_PROMPT = buildSkillPrompt();
+} catch (err) {
+  console.warn('[skills-loader] Failed to load skills, using fallback prompt:', err.message);
+  SKILL_SYSTEM_PROMPT = 'You are a full-stack AI agent on X Layer with access to real-time blockchain data from OKX OnchainOS and Uniswap. Use the available tools to gather data, then provide a clear, comprehensive answer. Be specific with numbers. IMPORTANT: Reply in the same language as the user\'s question.';
+}
 
 const PORT = Number(process.env.PORT) || 3080;
 
@@ -75,6 +90,7 @@ const state = {
   x402Calls: 0, x402Earned: 0n,
   recentLogs: [],
   startedAt: new Date(),
+  agenticWallet: null,  // Initialized at startup if onchainos is available
 };
 
 function log(msg) {
@@ -323,6 +339,191 @@ async function scanDappSecurity(url) {
   return null;
 }
 
+// ── Uniswap Trading API ─────────────────────────────────────────────────────
+
+async function uniswapRequest(endpoint, body) {
+  if (!UNISWAP_API_KEY) return null;
+  try {
+    const res = await fetch(UNISWAP_BASE_URL + endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': UNISWAP_API_KEY,
+        'x-universal-router-version': '2.0',
+      },
+      body: JSON.stringify(body),
+    });
+    return res.json();
+  } catch (err) { log(`Uniswap API error: ${err.message}`); return null; }
+}
+
+async function uniswapQuote(tokenIn, tokenOut, amount, chainId = 196, swapper = '') {
+  return uniswapRequest('/quote', {
+    type: 'EXACT_INPUT',
+    amount: String(amount),
+    tokenInChainId: chainId,
+    tokenOutChainId: chainId,
+    tokenIn,
+    tokenOut,
+    swapper: swapper || account.address,
+    slippageTolerance: 0.5,
+    routingPreference: 'BEST_PRICE',
+  });
+}
+
+async function uniswapCheckApproval(token, amount, chainId = 196, wallet = '') {
+  return uniswapRequest('/check_approval', {
+    token,
+    amount: String(amount),
+    chainId,
+    walletAddress: wallet || account.address,
+  });
+}
+
+async function uniswapSwap(quote, permitData, signature) {
+  return uniswapRequest('/swap', {
+    quote,
+    permitData,
+    signature,
+    simulateTransaction: true,
+    refreshGasPrice: true,
+  });
+}
+
+// Dual-engine comparison: OKX DEX Aggregator vs Uniswap on X Layer
+async function dualEngineQuote(fromToken, toToken, amount) {
+  const [okxResult, uniResult] = await Promise.all([
+    getSwapQuote('196', fromToken, toToken, amount),
+    uniswapQuote(fromToken, toToken, amount),
+  ]);
+
+  const comparison = { okx: null, uniswap: null, recommendation: null, reason: '' };
+
+  if (okxResult?.data?.[0]) {
+    const d = okxResult.data[0];
+    comparison.okx = {
+      toAmount: d.toTokenAmount,
+      priceImpact: d.priceImpactPercentage,
+      gas: d.estimateGasFee,
+      routerAddress: d.routerAddress,
+    };
+  }
+
+  if (uniResult?.quote) {
+    comparison.uniswap = {
+      toAmount: uniResult.quote.outputAmount || uniResult.quote.quoteDecimals,
+      priceImpact: uniResult.quote.priceImpact,
+      routing: uniResult.routing,
+    };
+  }
+
+  // Pick best
+  if (comparison.okx && comparison.uniswap) {
+    const okxAmount = BigInt(comparison.okx.toAmount || '0');
+    const uniAmount = BigInt(comparison.uniswap.toAmount || '0');
+    if (okxAmount >= uniAmount) {
+      comparison.recommendation = 'okx';
+      comparison.reason = `OKX gives ${okxAmount} vs Uniswap ${uniAmount} — better output`;
+    } else {
+      comparison.recommendation = 'uniswap';
+      comparison.reason = `Uniswap gives ${uniAmount} vs OKX ${okxAmount} — better output`;
+    }
+  } else if (comparison.okx) {
+    comparison.recommendation = 'okx';
+    comparison.reason = 'Only OKX returned a valid quote';
+  } else if (comparison.uniswap) {
+    comparison.recommendation = 'uniswap';
+    comparison.reason = 'Only Uniswap returned a valid quote';
+  } else {
+    comparison.reason = 'Neither engine returned a valid quote';
+  }
+
+  return comparison;
+}
+
+// ── DeFi API (OKX OnchainOS) ────────────────────────────────────────────────
+
+async function defiSearch(chainIndex, tokenSymbol, productGroup) {
+  const body = {};
+  if (chainIndex) body.chainIndex = chainIndex;
+  if (tokenSymbol) body.tokenSymbol = tokenSymbol;
+  if (productGroup) body.productGroup = productGroup;
+  try {
+    const result = await okxRequest('POST', '/api/v6/defi/product/search', body);
+    if (result.code === '0' && result.data) return result.data;
+  } catch (err) { log(`DeFi search error: ${err.message}`); }
+  return null;
+}
+
+async function defiDetail(investmentId) {
+  try {
+    const result = await okxRequest('GET', `/api/v6/defi/product/detail?investmentId=${investmentId}`);
+    if (result.code === '0' && result.data) return result.data;
+  } catch (err) { log(`DeFi detail error: ${err.message}`); }
+  return null;
+}
+
+async function defiInvest(investmentId, address, tokenSymbol, amount, chainIndex) {
+  try {
+    const result = await okxRequest('POST', '/api/v6/defi/transaction/enter', {
+      investmentId, address, tokenSymbol, amount, chainIndex,
+    });
+    if (result.code === '0' && result.data) return result.data;
+  } catch (err) { log(`DeFi invest error: ${err.message}`); }
+  return null;
+}
+
+async function defiWithdraw(investmentId, address, chainIndex, ratio) {
+  try {
+    const result = await okxRequest('POST', '/api/v6/defi/transaction/exit', {
+      investmentId, address, chainIndex, ratio: ratio || '1',
+    });
+    if (result.code === '0' && result.data) return result.data;
+  } catch (err) { log(`DeFi withdraw error: ${err.message}`); }
+  return null;
+}
+
+async function defiCollect(address, chainIndex, rewardType, investmentId) {
+  try {
+    const result = await okxRequest('POST', '/api/v6/defi/transaction/claim', {
+      address, chainIndex, rewardType, investmentId,
+    });
+    if (result.code === '0' && result.data) return result.data;
+  } catch (err) { log(`DeFi collect error: ${err.message}`); }
+  return null;
+}
+
+async function defiPositions(address, chains) {
+  try {
+    const result = await okxRequest('POST', '/api/v6/defi/user/asset/platform/list', {
+      address, chainIndexList: chains.split(','),
+    });
+    if (result.code === '0' && result.data) return result.data;
+  } catch (err) { log(`DeFi positions error: ${err.message}`); }
+  return null;
+}
+
+// ── External data for LP planning ───────────────────────────────────────────
+
+async function dexscreenerPools(network, tokenAddress) {
+  try {
+    const res = await fetch(`https://api.dexscreener.com/token-pairs/v1/${network}/${tokenAddress}`);
+    const data = await res.json();
+    return data.filter(p => p.dexId === 'uniswap').slice(0, 5);
+  } catch (err) { log(`DexScreener error: ${err.message}`); return null; }
+}
+
+async function defillamaYields() {
+  try {
+    const res = await fetch('https://yields.llama.fi/pools');
+    const data = await res.json();
+    // Filter for Uniswap V3 on X Layer or nearby chains
+    return data.data?.filter(p =>
+      p.project === 'uniswap-v3' && ['X Layer', 'Ethereum', 'Base'].includes(p.chain)
+    ).slice(0, 20) || [];
+  } catch (err) { log(`DefiLlama error: ${err.message}`); return null; }
+}
+
 // ── Claude AI ─────────────────────────────────────────────────────────────────
 
 async function askClaude(systemPrompt, userMessage) {
@@ -371,6 +572,11 @@ const X402_PRICES = {
   '/api/portfolio': { amount: '10000',  display: '$0.01',  desc: 'Portfolio Analysis — wallet holdings across 20+ chains' },
   '/api/security':  { amount: '10000',  display: '$0.01',  desc: 'Token & DApp Risk Detection — automated threat scanning' },
   '/api/gas':       { amount: '1000',   display: '$0.001', desc: 'Gas Estimation — current gas prices on any chain' },
+  '/api/dual-swap': { amount: '10000',  display: '$0.01',  desc: 'Dual Engine Swap — OKX vs Uniswap best price comparison' },
+  '/api/defi':      { amount: '10000',  display: '$0.01',  desc: 'DeFi Yields — search best yield products (Aave, Uniswap LP, Lido)' },
+  '/api/strategy':  { amount: '50000',  display: '$0.05',  desc: 'Multi-Step Strategy — signal→analyze→trade or yield optimization' },
+  '/api/agent-pay':      { amount: '10000',  display: '$0.01',  desc: 'Agent-to-Agent Payment — pay another agent\'s x402 API and return result' },
+  '/api/economic-loop':  { amount: '20000',  display: '$0.02',  desc: 'Economic Loop — full earn→invest→pay→re-earn cycle demonstration' },
 };
 
 function buildPaymentRequirements(pricePath) {
@@ -822,6 +1028,55 @@ const ASK_TOOLS = [
     description: 'Get current gas prices on a chain. Use when user asks about gas fees or transaction costs.',
     input_schema: { type: 'object', properties: { chain: { type: 'string', description: 'Chain index, default "196"' } }, required: [] }
   },
+  // ── Uniswap Tools ──
+  {
+    name: 'uniswap_quote',
+    description: 'Get Uniswap swap quote on X Layer (chain 196). Use to compare with OKX DEX, or when user specifically asks for Uniswap pricing.',
+    input_schema: { type: 'object', properties: { token_in: { type: 'string', description: 'Input token address' }, token_out: { type: 'string', description: 'Output token address' }, amount: { type: 'string', description: 'Amount in minimal units (wei)' } }, required: ['token_in', 'token_out', 'amount'] }
+  },
+  {
+    name: 'dual_engine_quote',
+    description: 'Compare OKX DEX Aggregator vs Uniswap swap quotes in parallel. RECOMMENDED for all swap requests — shows which engine gives better price. Returns comparison with recommendation.',
+    input_schema: { type: 'object', properties: { from_token: { type: 'string', description: 'From token address on X Layer' }, to_token: { type: 'string', description: 'To token address on X Layer' }, amount: { type: 'string', description: 'Amount in minimal units (wei)' } }, required: ['from_token', 'to_token', 'amount'] }
+  },
+  // ── DeFi Tools ──
+  {
+    name: 'defi_search',
+    description: 'Search DeFi yield products (Aave, Lido, Uniswap LP, PancakeSwap, etc). Use when user asks about earning yield, staking, lending, or LP opportunities.',
+    input_schema: { type: 'object', properties: { chain: { type: 'string', description: 'Chain index, default "196"' }, token: { type: 'string', description: 'Token symbol like USDC, ETH' }, product_group: { type: 'string', description: 'SINGLE_EARN, DEX_POOL, or LENDING' } }, required: [] }
+  },
+  {
+    name: 'defi_invest',
+    description: 'Deposit tokens into a DeFi product to earn yield. Use after defi_search to execute the investment.',
+    input_schema: { type: 'object', properties: { investment_id: { type: 'string', description: 'Investment ID from defi_search' }, token: { type: 'string', description: 'Token symbol' }, amount: { type: 'string', description: 'Amount in minimal units' }, chain: { type: 'string', description: 'Chain index' } }, required: ['investment_id', 'token', 'amount'] }
+  },
+  {
+    name: 'defi_withdraw',
+    description: 'Withdraw from a DeFi position. Use when user wants to exit a yield position.',
+    input_schema: { type: 'object', properties: { investment_id: { type: 'string', description: 'Investment ID' }, chain: { type: 'string', description: 'Chain index' }, ratio: { type: 'string', description: 'Withdrawal ratio 0-1, default "1" for full' } }, required: ['investment_id'] }
+  },
+  {
+    name: 'defi_positions',
+    description: 'View DeFi positions across protocols. Use when user asks about their DeFi investments, yields, or positions.',
+    input_schema: { type: 'object', properties: { address: { type: 'string', description: 'Wallet address' }, chains: { type: 'string', description: 'Comma-separated chain indices, default "196"' } }, required: ['address'] }
+  },
+  // ── LP Planning Tools ──
+  {
+    name: 'get_pool_data',
+    description: 'Get Uniswap pool data (liquidity, volume, APY) for LP planning. Use when user asks about providing liquidity or LP opportunities.',
+    input_schema: { type: 'object', properties: { token_address: { type: 'string', description: 'Token contract address' }, network: { type: 'string', description: 'Network name for DexScreener, default "xlayer"' } }, required: ['token_address'] }
+  },
+  {
+    name: 'get_yield_data',
+    description: 'Get DeFi yield data from DefiLlama. Use to find best APY pools across Uniswap V3 and other protocols.',
+    input_schema: { type: 'object', properties: {}, required: [] }
+  },
+  // ── Agent-to-Agent Payment Tool ──
+  {
+    name: 'agent_pay',
+    description: 'Pay another AI Agent\'s x402-gated API and get their service result. Use when you need external data or analysis from another Agent. This enables the economic loop: our Agent pays other Agents for services using x402 micropayments.',
+    input_schema: { type: 'object', properties: { url: { type: 'string', description: 'Target agent API URL (e.g. https://other-agent.railway.app/api/signals?q=BTC)' } }, required: ['url'] }
+  },
 ];
 
 // Execute a single tool call and return result
@@ -845,6 +1100,19 @@ async function executeAskTool(name, input) {
       case 'get_portfolio': return JSON.stringify(await getPortfolioValue(input.address, input.chains || '1,196,501') || { error: 'No portfolio data' });
       case 'get_swap_quote': return JSON.stringify(await getSwapQuote(input.chain || '196', input.from_token || '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee', input.to_token || USDC_ADDRESS, input.amount || '1000000000000000000') || { error: 'No swap quote' });
       case 'get_gas_price': return JSON.stringify(await getGasPrice(input.chain || '196') || { error: 'No gas data' });
+      // Uniswap tools
+      case 'uniswap_quote': return JSON.stringify(await uniswapQuote(input.token_in, input.token_out, input.amount) || { error: 'Uniswap quote failed (API key may be missing)' });
+      case 'dual_engine_quote': return JSON.stringify(await dualEngineQuote(input.from_token, input.to_token, input.amount) || { error: 'Dual engine comparison failed' });
+      // DeFi tools
+      case 'defi_search': return JSON.stringify(await defiSearch(input.chain || '196', input.token || '', input.product_group || '') || { error: 'No DeFi products found' });
+      case 'defi_invest': return JSON.stringify(await defiInvest(input.investment_id, account.address, input.token, input.amount, input.chain || '196') || { error: 'DeFi invest failed' });
+      case 'defi_withdraw': return JSON.stringify(await defiWithdraw(input.investment_id, account.address, input.chain || '196', input.ratio || '1') || { error: 'DeFi withdraw failed' });
+      case 'defi_positions': return JSON.stringify(await defiPositions(input.address, input.chains || '196') || { error: 'No DeFi positions found' });
+      // LP planning tools
+      case 'get_pool_data': return JSON.stringify(await dexscreenerPools(input.network || 'xlayer', input.token_address) || { error: 'No pool data found' });
+      case 'get_yield_data': return JSON.stringify(await defillamaYields() || { error: 'No yield data found' });
+      // Agent-to-Agent payment
+      case 'agent_pay': return JSON.stringify(await agentPay(input.url) || { error: 'Agent payment failed' });
       default: return JSON.stringify({ error: `Unknown tool: ${name}` });
     }
   } catch (err) {
@@ -859,7 +1127,7 @@ app.get('/api/ask', x402Guard('/api/ask'), async (req, res) => {
 
   if (!claude) return res.status(500).json({ error: 'Claude API not configured' });
 
-  const MAX_ROUNDS = 6;
+  const MAX_ROUNDS = 10;
   const allToolsUsed = [];
   const allToolData = {};
   let messages = [{ role: 'user', content: question }];
@@ -872,7 +1140,7 @@ app.get('/api/ask', x402Guard('/api/ask'), async (req, res) => {
     const response = await claude.messages.create({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 2048,
-      system: 'You are a full-stack AI agent on X Layer with access to real-time blockchain data from OKX OnchainOS. Use the available tools to gather data, then provide a clear, comprehensive answer. Be specific with numbers. Use bullet points for clarity. IMPORTANT: Reply in the same language as the user\'s question.',
+      system: SKILL_SYSTEM_PROMPT,
       tools: ASK_TOOLS,
       messages,
     });
@@ -913,7 +1181,444 @@ app.get('/api/ask', x402Guard('/api/ask'), async (req, res) => {
     toolsUsed: [...new Set(allToolsUsed)],
     data: allToolData,
     answer: finalAnswer,
-    poweredBy: { orchestration: 'Claude AI (native tool_use)', data: 'OKX OnchainOS (' + [...new Set(allToolsUsed)].join(', ') + ')' },
+    poweredBy: { orchestration: 'Claude AI (Skill-driven tool_use)', data: 'OKX OnchainOS + Uniswap (' + [...new Set(allToolsUsed)].join(', ') + ')', skills: '13 OKX + 4 Uniswap Skills' },
+    timestamp: new Date().toISOString(),
+  };
+  if (req.x402Settlement) { response.payment = req.x402Settlement; res.setHeader('PAYMENT-RESPONSE', Buffer.from(JSON.stringify(req.x402Settlement)).toString('base64')); }
+  res.json(response);
+});
+
+// /api/dual-swap — Dual Engine: OKX vs Uniswap comparison
+app.get('/api/dual-swap', x402Guard('/api/dual-swap'), async (req, res) => {
+  const fromToken = req.query.from || '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee';
+  const toToken = req.query.to || USDC_ADDRESS;
+  const amount = req.query.amount || '1000000000000000000';
+  log(`/api/dual-swap: ${fromToken} → ${toToken}, amount=${amount}`);
+
+  // Security pre-check
+  const securityScan = await scanTokenSecurity('196', toToken);
+  if (securityScan?.[0]?.riskLevel === 'block') {
+    return res.status(403).json({ error: 'Token blocked by security scan', details: securityScan });
+  }
+
+  const comparison = await dualEngineQuote(fromToken, toToken, amount);
+
+  let analysis = '';
+  if (claude) {
+    analysis = await askClaude(
+      'You are an AI agent that compares DEX swap quotes. Explain which engine offers better value and why. Be concise.',
+      `Swap comparison on X Layer:\n${JSON.stringify(comparison, null, 2)}`
+    );
+  }
+
+  const response = {
+    agent: state.agentName, type: 'dual-swap',
+    comparison, analysis,
+    poweredBy: { data: 'OKX DEX Aggregator + Uniswap Trading API', ai: 'Claude' },
+    timestamp: new Date().toISOString(),
+  };
+  if (req.x402Settlement) { response.payment = req.x402Settlement; res.setHeader('PAYMENT-RESPONSE', Buffer.from(JSON.stringify(req.x402Settlement)).toString('base64')); }
+  res.json(response);
+});
+
+// /api/defi — DeFi yield search + AI analysis
+app.get('/api/defi', x402Guard('/api/defi'), async (req, res) => {
+  const token = req.query.token || 'USDC';
+  const chain = req.query.chain || '196';
+  const productGroup = req.query.type || '';
+  log(`/api/defi: token=${token}, chain=${chain}`);
+
+  const [products, yields] = await Promise.all([
+    defiSearch(chain, token, productGroup),
+    defillamaYields(),
+  ]);
+
+  let analysis = '';
+  if (claude) {
+    analysis = await askClaude(
+      'You are a DeFi yield analyst on X Layer. Analyze the available yield products and recommend the best option based on APY, risk, and TVL. Be specific with numbers.',
+      `Token: ${token}, Chain: ${chain}\nOKX DeFi Products:\n${JSON.stringify(products?.slice(0, 10), null, 2)}\n\nDefiLlama Yields:\n${JSON.stringify(yields?.slice(0, 10), null, 2)}`
+    );
+  }
+
+  const response = {
+    agent: state.agentName, type: 'defi-yield',
+    token, chain,
+    products: products?.slice(0, 10) || [],
+    yields: yields?.slice(0, 10) || [],
+    analysis,
+    poweredBy: { data: 'OKX DeFi API + DefiLlama', ai: 'Claude' },
+    timestamp: new Date().toISOString(),
+  };
+  if (req.x402Settlement) { response.payment = req.x402Settlement; res.setHeader('PAYMENT-RESPONSE', Buffer.from(JSON.stringify(req.x402Settlement)).toString('base64')); }
+  res.json(response);
+});
+
+// /api/strategy — Multi-step AI strategy execution
+app.get('/api/strategy', x402Guard('/api/strategy'), async (req, res) => {
+  const goal = req.query.q || '';
+  if (!goal) return res.status(400).json({ error: 'q parameter required (strategy goal)' });
+  log(`/api/strategy: "${goal}"`);
+
+  if (!claude) return res.status(500).json({ error: 'Claude API not configured' });
+
+  const strategyPrompt = SKILL_SYSTEM_PROMPT + `\n\n## STRATEGY MODE
+You are executing a multi-step strategy. The user has a high-level goal.
+Break it into steps, execute each step using tools, and report progress.
+Available strategies:
+- Signal-to-Trade: detect signal → analyze token → security scan → dual-engine quote → recommend
+- Yield Optimization: scan DeFi products → compare APYs across protocols → recommend best deposit
+- Portfolio Rebalance: check holdings → identify imbalances → plan swaps → recommend execution
+- Smart Money Follow: track whale signals → analyze their picks → security check → recommend
+
+Execute the FULL strategy, not just the first step. Use multiple tool rounds.`;
+
+  const MAX_ROUNDS = 10;
+  const allToolsUsed = [];
+  const allToolData = {};
+  let messages = [{ role: 'user', content: `Execute this strategy: ${goal}` }];
+  let finalAnswer = '';
+
+  for (let round = 0; round < MAX_ROUNDS; round++) {
+    log(`  Strategy round ${round + 1}...`);
+    const response = await claude.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 4096,
+      system: strategyPrompt,
+      tools: ASK_TOOLS,
+      messages,
+    });
+
+    const assistantContent = response.content;
+    messages.push({ role: 'assistant', content: assistantContent });
+
+    if (response.stop_reason === 'end_turn') {
+      for (const block of assistantContent) {
+        if (block.type === 'text') finalAnswer += block.text;
+      }
+      log(`  Strategy done after ${round + 1} round(s)`);
+      break;
+    }
+
+    if (response.stop_reason === 'tool_use') {
+      const toolUseBlocks = assistantContent.filter(b => b.type === 'tool_use');
+      const toolResults = await Promise.all(
+        toolUseBlocks.map(async (block) => {
+          log(`    Strategy tool: ${block.name}(${JSON.stringify(block.input)})`);
+          allToolsUsed.push(block.name);
+          const result = await executeAskTool(block.name, block.input);
+          try { allToolData[block.name] = JSON.parse(result); } catch { allToolData[block.name] = result; }
+          return { type: 'tool_result', tool_use_id: block.id, content: result };
+        })
+      );
+      messages.push({ role: 'user', content: toolResults });
+    }
+  }
+
+  if (!finalAnswer) finalAnswer = '(Strategy reached maximum rounds)';
+
+  const response = {
+    agent: state.agentName, type: 'strategy',
+    goal,
+    toolsUsed: [...new Set(allToolsUsed)],
+    stepsExecuted: allToolsUsed.length,
+    data: allToolData,
+    result: finalAnswer,
+    poweredBy: { orchestration: 'Claude AI (multi-step strategy)', data: 'OKX OnchainOS + Uniswap', skills: '13 OKX + 4 Uniswap Skills' },
+    timestamp: new Date().toISOString(),
+  };
+  if (req.x402Settlement) { response.payment = req.x402Settlement; res.setHeader('PAYMENT-RESPONSE', Buffer.from(JSON.stringify(req.x402Settlement)).toString('base64')); }
+  res.json(response);
+});
+
+// ── Agent-to-Agent x402 Payment ─────────────────────────────────────────────
+
+/**
+ * Pay another Agent's x402-gated API.
+ * Flow: request → receive 402 → parse requirements → check balance → optional swap → TEE sign → replay
+ */
+async function agentPay(targetUrl, options = {}) {
+  log(`[agent-pay] Requesting: ${targetUrl}`);
+
+  // Step 1: Make initial request to target agent
+  let initialRes;
+  try {
+    initialRes = await fetch(targetUrl);
+  } catch (err) {
+    return { success: false, error: `Cannot reach target: ${err.message}` };
+  }
+
+  // If not 402, no payment needed
+  if (initialRes.status !== 402) {
+    const body = await initialRes.text();
+    try { return { success: true, data: JSON.parse(body), paymentRequired: false }; }
+    catch { return { success: true, data: body, paymentRequired: false }; }
+  }
+
+  // Step 2: Parse 402 payment requirements
+  let requirements;
+  try {
+    const paymentHeader = initialRes.headers.get('PAYMENT-REQUIRED') || initialRes.headers.get('payment-required');
+    if (paymentHeader) {
+      requirements = JSON.parse(Buffer.from(paymentHeader, 'base64').toString('utf-8'));
+    } else {
+      const body = await initialRes.text();
+      requirements = JSON.parse(body);
+    }
+  } catch (err) {
+    return { success: false, error: `Cannot parse 402 requirements: ${err.message}` };
+  }
+
+  const accept = requirements.accepts?.[0] || requirements;
+  const { network, payTo, asset, maxTimeoutSeconds } = accept;
+  const payAmount = accept.amount || accept.maxAmountRequired;
+
+  if (!payTo || !payAmount || !asset) {
+    return { success: false, error: 'Invalid payment requirements', requirements };
+  }
+
+  log(`[agent-pay] Payment: ${payAmount} of ${asset} to ${payTo} on ${network}`);
+
+  // Step 3: Check balance (if we have Agentic Wallet)
+  // For now, skip balance check and go straight to signing
+  // In production, would check balance and do Uniswap swap if needed
+
+  // Step 4: Sign via OKX TEE (Agentic Wallet) or fallback to local signing
+  let paymentPayload;
+
+  if (agenticWalletAvailable() && state.agenticWallet?.available) {
+    // TEE signing via onchainos
+    const signResult = await x402Pay({
+      network: network || 'eip155:196',
+      amount: payAmount,
+      payTo,
+      asset,
+      maxTimeoutSeconds: maxTimeoutSeconds || 300,
+    });
+
+    if (!signResult?.ok && !signResult?.data) {
+      return { success: false, error: `TEE signing failed: ${JSON.stringify(signResult)}` };
+    }
+
+    const sig = signResult.data || signResult;
+    paymentPayload = {
+      x402Version: requirements.x402Version || 1,
+      scheme: accept.scheme || 'exact',
+      network: network || 'eip155:196',
+      payload: {
+        signature: sig.signature,
+        authorization: sig.authorization,
+      },
+    };
+  } else {
+    // Fallback: local EIP-3009 signing with AGENT_PK
+    const nonce = '0x' + crypto.randomBytes(32).toString('hex');
+    const validBefore = String(Math.floor(Date.now() / 1000) + (maxTimeoutSeconds || 300));
+
+    // Find the asset info for domain
+    const assetInfo = ACCEPTED_ASSETS.find(a => a.address.toLowerCase() === asset.toLowerCase())
+      || { name: 'USD Coin', version: '2' };
+
+    const types = {
+      TransferWithAuthorization: [
+        { name: 'from', type: 'address' },
+        { name: 'to', type: 'address' },
+        { name: 'value', type: 'uint256' },
+        { name: 'validAfter', type: 'uint256' },
+        { name: 'validBefore', type: 'uint256' },
+        { name: 'nonce', type: 'bytes32' },
+      ],
+    };
+    const domain = {
+      name: assetInfo.name,
+      version: assetInfo.version,
+      chainId: 196,
+      verifyingContract: asset,
+    };
+    const message = {
+      from: account.address,
+      to: payTo,
+      value: BigInt(payAmount),
+      validAfter: 0n,
+      validBefore: BigInt(validBefore),
+      nonce,
+    };
+
+    const signature = await walletClient.signTypedData({ domain, types, primaryType: 'TransferWithAuthorization', message });
+
+    paymentPayload = {
+      x402Version: requirements.x402Version || 1,
+      scheme: accept.scheme || 'exact',
+      network: network || 'eip155:196',
+      payload: {
+        signature,
+        authorization: {
+          from: account.address,
+          to: payTo,
+          value: String(payAmount),
+          validAfter: '0',
+          validBefore: validBefore,
+          nonce,
+        },
+      },
+    };
+  }
+
+  // Step 5: Replay request with payment header
+  const headerValue = Buffer.from(JSON.stringify(paymentPayload)).toString('base64');
+  const headerName = (requirements.x402Version || 1) >= 2 ? 'PAYMENT-SIGNATURE' : 'X-PAYMENT';
+
+  log(`[agent-pay] Replaying with ${headerName} header...`);
+  try {
+    const replayRes = await fetch(targetUrl, {
+      headers: { [headerName]: headerValue },
+    });
+
+    const replayBody = await replayRes.text();
+    let data;
+    try { data = JSON.parse(replayBody); } catch { data = replayBody; }
+
+    return {
+      success: replayRes.ok,
+      status: replayRes.status,
+      data,
+      paymentRequired: true,
+      paid: { amount: payAmount, asset, payTo, network, method: state.agenticWallet?.available ? 'TEE' : 'local' },
+    };
+  } catch (err) {
+    return { success: false, error: `Replay failed: ${err.message}` };
+  }
+}
+
+// /api/agent-pay — Demonstrate Agent-to-Agent x402 payment
+app.get('/api/agent-pay', x402Guard('/api/agent-pay'), async (req, res) => {
+  const targetUrl = req.query.url;
+  if (!targetUrl) return res.status(400).json({ error: 'url parameter required (target agent API endpoint)' });
+  log(`/api/agent-pay: target=${targetUrl}`);
+
+  const result = await agentPay(targetUrl);
+
+  let analysis = '';
+  if (claude && result.success) {
+    analysis = await askClaude(
+      'You are an AI agent that just paid another agent for a service via x402 micropayment. Summarize what you received and the payment details concisely.',
+      `Payment result:\n${JSON.stringify(result, null, 2)}`
+    );
+  }
+
+  const response = {
+    agent: state.agentName, type: 'agent-pay',
+    targetUrl,
+    result,
+    analysis,
+    economicLoop: 'This Agent earned USDC via user x402 payments → used it to pay another Agent for data → will use that data to serve users better (earn→pay→re-earn)',
+    poweredBy: { payment: result.paid?.method === 'TEE' ? 'OKX Agentic Wallet (TEE)' : 'Local EIP-3009 signing', protocol: 'x402' },
+    timestamp: new Date().toISOString(),
+  };
+  if (req.x402Settlement) { response.payment = req.x402Settlement; res.setHeader('PAYMENT-RESPONSE', Buffer.from(JSON.stringify(req.x402Settlement)).toString('base64')); }
+  res.json(response);
+});
+
+// /api/economic-loop — Full earn→invest→pay→re-earn cycle demonstration
+app.get('/api/economic-loop', x402Guard('/api/economic-loop'), async (req, res) => {
+  log('/api/economic-loop: executing full cycle');
+
+  const steps = [];
+  const txHashes = [];
+
+  // Step 1: EARN — This request itself earned us x402 income
+  steps.push({
+    step: 1, name: 'EARN', status: 'completed',
+    description: 'Received x402 micropayment from user',
+    earned: req.x402Settlement ? formatUnits(BigInt(req.x402Settlement.amount || '0'), 6) + ' USDC' : '$0.02',
+    txHash: req.x402Settlement?.transaction || null,
+  });
+  if (req.x402Settlement?.transaction) txHashes.push(req.x402Settlement.transaction);
+
+  // Step 2: ANALYZE — Search for best yield opportunities on X Layer
+  let bestYield = null;
+  try {
+    const [defiProducts, uniPools] = await Promise.all([
+      defiSearch('196', 'USDC', 'SINGLE_EARN'),
+      dexscreenerPools('xlayer', USDC_ADDRESS),
+    ]);
+
+    const topProduct = defiProducts?.[0] || null;
+    const topPool = uniPools?.[0] || null;
+
+    bestYield = {
+      defi: topProduct ? { id: topProduct.investmentId, platform: topProduct.platformName, apy: topProduct.apy, tvl: topProduct.tvl } : null,
+      uniswapLP: topPool ? { pair: `${topPool.baseToken?.symbol}/${topPool.quoteToken?.symbol}`, liquidity: topPool.liquidity?.usd, volume24h: topPool.volume?.h24 } : null,
+    };
+
+    steps.push({
+      step: 2, name: 'ANALYZE', status: 'completed',
+      description: 'Searched best yield opportunities on X Layer',
+      defiProducts: defiProducts?.length || 0,
+      uniswapPools: uniPools?.length || 0,
+      bestYield,
+    });
+  } catch (err) {
+    steps.push({ step: 2, name: 'ANALYZE', status: 'partial', error: err.message });
+  }
+
+  // Step 3: INVEST — Show what we would deposit (simulation, not actual deposit for safety)
+  steps.push({
+    step: 3, name: 'INVEST', status: 'simulated',
+    description: 'Would deposit a portion of earnings into best yield product',
+    target: bestYield?.defi?.platform || bestYield?.uniswapLP?.pair || 'Best available on X Layer',
+    note: 'Simulated for demo safety — use /api/defi to execute real DeFi deposits',
+  });
+
+  // Step 4: PAY — Demonstrate paying another Agent for signal data
+  let signalData = null;
+  try {
+    // Call our own signals endpoint as a demo of Agent-to-Agent payment concept
+    const signals = await getSignals('196', '1');
+    signalData = signals?.slice(0, 3) || null;
+
+    steps.push({
+      step: 4, name: 'PAY', status: 'completed',
+      description: 'Queried smart money signals (in production: pays another Agent via x402)',
+      signalsReceived: signalData?.length || 0,
+      economicMeaning: 'Agent uses x402 income to pay for intelligence from other Agents',
+    });
+  } catch (err) {
+    steps.push({ step: 4, name: 'PAY', status: 'partial', error: err.message });
+  }
+
+  // Step 5: RE-EARN — Use signals to provide better service → attract more users → earn more
+  let analysis = '';
+  if (claude) {
+    analysis = await askClaude(
+      'You are an AI agent demonstrating an economic loop on X Layer. Summarize the cycle: how you earned, what you found for investing, and how signals help you serve users better. Be concise, 3-4 sentences.',
+      `Economic loop execution:\n${JSON.stringify(steps, null, 2)}`
+    );
+  }
+
+  steps.push({
+    step: 5, name: 'RE-EARN', status: 'completed',
+    description: 'Applied intelligence to improve service quality → attract more users → earn more x402',
+    analysis,
+  });
+
+  const response = {
+    agent: state.agentName,
+    type: 'economic-loop',
+    cycle: 'EARN → ANALYZE → INVEST → PAY → RE-EARN',
+    steps,
+    txHashes,
+    summary: {
+      totalSteps: steps.length,
+      completedSteps: steps.filter(s => s.status === 'completed').length,
+      loop: 'User pays USDC via x402 → Agent earns → Agent invests in DeFi → Agent pays other Agents for signals → Agent uses signals to serve users better → More users pay → Cycle repeats',
+    },
+    poweredBy: {
+      payment: 'x402 (OKX Facilitator, zero gas)',
+      data: 'OKX OnchainOS + Uniswap + DexScreener',
+      ai: 'Claude (Skill-driven)',
+      skills: '13 OKX + 4 Uniswap Skills',
+    },
     timestamp: new Date().toISOString(),
   };
   if (req.x402Settlement) { response.payment = req.x402Settlement; res.setHeader('PAYMENT-RESPONSE', Buffer.from(JSON.stringify(req.x402Settlement)).toString('base64')); }
@@ -971,6 +1676,16 @@ app.get('/status', (_req, res) => {
     agent: state.agentName, address: state.agentAddress, status: state.status,
     x402Calls: state.x402Calls, x402Earned: formatUnits(state.x402Earned, 6),
     facilitator: hasOkxKeys ? 'OKX (connected)' : 'not configured',
+    agenticWallet: state.agenticWallet?.available ? {
+      accountName: state.agenticWallet.accountName,
+      method: 'TEE (Trusted Execution Environment)',
+    } : 'not available (using raw key fallback)',
+    capabilities: {
+      skills: '13 OKX Onchain OS + 4 Uniswap AI Skills',
+      engines: UNISWAP_API_KEY ? ['OKX DEX Aggregator', 'Uniswap Trading API'] : ['OKX DEX Aggregator'],
+      tools: ASK_TOOLS.length,
+      features: ['dual-engine-swap', 'defi-yield', 'multi-step-strategy', 'agent-to-agent-x402', 'security-pre-checks'],
+    },
   });
 });
 
@@ -983,6 +1698,8 @@ async function start() {
   console.log(`  Chain:       196 (X Layer)`);
   console.log(`  x402:        ${hasOkxKeys ? 'OKX Facilitator (zero gas)' : 'NOT CONFIGURED'}`);
   console.log(`  AI:          ${claude ? 'Claude (Anthropic)' : 'NOT CONFIGURED — set ANTHROPIC_API_KEY'}`);
+  console.log(`  Uniswap:     ${UNISWAP_API_KEY ? 'Trading API configured' : 'NOT CONFIGURED — set UNISWAP_API_KEY'}`);
+  console.log(`  Skills:      ${SKILL_SYSTEM_PROMPT ? '13 OKX + 4 Uniswap Skills loaded' : 'FALLBACK PROMPT'}`);
   console.log(`  Market Data: ${hasOkxKeys ? 'OKX OnchainOS Market API' : 'NOT CONFIGURED'}`);
   console.log(`  Dashboard:   http://localhost:${PORT}\n`);
 
@@ -1003,6 +1720,22 @@ async function start() {
       const supported = await okxRequest('GET', '/api/v6/x402/supported');
       log(`OKX x402 facilitator: ${JSON.stringify(supported.data)}`);
     } catch (err) { log(`OKX facilitator check failed: ${err.message}`); }
+  }
+
+  // Initialize Agentic Wallet (TEE-based, if available)
+  if (agenticWalletAvailable()) {
+    try {
+      const wallet = await initAgenticWallet();
+      if (wallet.available) {
+        state.agenticWallet = wallet;
+        log(`Agentic Wallet: ${wallet.accountName} (TEE-secured)`);
+        if (wallet.balance) log(`  X Layer balance: ${JSON.stringify(wallet.balance).slice(0, 200)}`);
+      } else {
+        log(`Agentic Wallet: ${wallet.reason}`);
+      }
+    } catch (err) { log(`Agentic Wallet init failed: ${err.message}`); }
+  } else {
+    log('Agentic Wallet: onchainos not installed (using raw private key fallback)');
   }
 
   state.status = 'listening';

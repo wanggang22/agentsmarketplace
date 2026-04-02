@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "agentsmarketplace": {
+      "command": "node",
+      "args": ["scripts/mcp-server.mjs"],
+      "env": {
+        "AGENT_URL": "https://xlayeragent-server-production.up.railway.app"
+      }
+    }
+  }
+}
