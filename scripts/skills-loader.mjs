@@ -10,12 +10,17 @@
 import { readFileSync, existsSync } from 'fs';
 import { join, resolve } from 'path';
 
-// Resolve skill directories relative to project root
+// Resolve skill directories — check project-local first, then external repos
 const PROJECT_ROOT = resolve(import.meta.dirname, '..');
 const XLAYER_ROOT = resolve(PROJECT_ROOT, '..');
 
-const OKX_SKILLS_DIR = join(XLAYER_ROOT, 'onchainos-skills', 'skills');
-const UNISWAP_SKILLS_DIR = join(XLAYER_ROOT, 'uniswap-ai', 'packages', 'plugins');
+// Primary: skills bundled in our repo (works on Railway deployment)
+const LOCAL_OKX_DIR = join(PROJECT_ROOT, 'skills', 'okx');
+const LOCAL_UNISWAP_DIR = join(PROJECT_ROOT, 'skills', 'uniswap');
+
+// Fallback: external repos (works in local dev)
+const EXT_OKX_DIR = join(XLAYER_ROOT, 'onchainos-skills', 'skills');
+const EXT_UNISWAP_DIR = join(XLAYER_ROOT, 'uniswap-ai', 'packages', 'plugins');
 
 // OKX Skills to load (ordered by importance)
 const OKX_SKILLS = [
@@ -153,7 +158,10 @@ REPLY LANGUAGE: Always reply in the same language as the user's question.
   // Load OKX Skills
   sections.push('\n## OKX Onchain OS Skills Knowledge\n');
   for (const skillName of OKX_SKILLS) {
-    const skillPath = join(OKX_SKILLS_DIR, skillName, 'SKILL.md');
+    // Check local bundled copy first, then external repo
+    const localPath = join(LOCAL_OKX_DIR, `${skillName}.md`);
+    const extPath = join(EXT_OKX_DIR, skillName, 'SKILL.md');
+    const skillPath = existsSync(localPath) ? localPath : extPath;
     if (!existsSync(skillPath)) continue;
     try {
       const content = readFileSync(skillPath, 'utf-8');
@@ -169,7 +177,10 @@ REPLY LANGUAGE: Always reply in the same language as the user's question.
   // Load Uniswap Skills
   sections.push('\n## Uniswap AI Skills Knowledge\n');
   for (const { plugin, skill } of UNISWAP_SKILLS) {
-    const skillPath = join(UNISWAP_SKILLS_DIR, plugin, 'skills', skill, 'SKILL.md');
+    // Check local bundled copy first, then external repo
+    const localPath = join(LOCAL_UNISWAP_DIR, `${skill}.md`);
+    const extPath = join(EXT_UNISWAP_DIR, plugin, 'skills', skill, 'SKILL.md');
+    const skillPath = existsSync(localPath) ? localPath : extPath;
     if (!existsSync(skillPath)) continue;
     try {
       const content = readFileSync(skillPath, 'utf-8');

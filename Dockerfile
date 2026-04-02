@@ -12,6 +12,7 @@ RUN npm ci --omit=dev
 
 COPY scripts/ ./scripts/
 COPY sdk/ ./sdk/
+COPY skills/ ./skills/
 
 EXPOSE 3080
 
