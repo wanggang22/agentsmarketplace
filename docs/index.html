@@ -2149,6 +2149,11 @@ function buildChatQueryParams(path, query) {
   if (path.includes('audit')) return '?contract=' + encodeURIComponent(query || '0x0') + '&chain=196';
   if (path.includes('signal')) return '?chain=' + encodeURIComponent(query || '1') + '&type=smart_money';
   if (path.includes('trench')) return '?chain=' + encodeURIComponent(query || '501') + '&stage=NEW';
+  if (path.includes('dual-swap')) return '?from=0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee&to=0x74b7F16337b8972027F6196A17a631aC6dE26d22&amount=' + encodeURIComponent(query || '1000000000000000000');
+  if (path.includes('agent-pay')) return '?url=' + encodeURIComponent(query || 'https://xlayeragent-server-production.up.railway.app/api/gas?chain=196');
+  if (path.includes('economic-loop')) return '';
+  if (path.includes('strategy')) return '?q=' + encodeURIComponent(query || 'Find best yield for USDC on X Layer');
+  if (path.includes('defi')) return '?token=' + encodeURIComponent(query || 'USDC') + '&chain=196';
   if (path.includes('swap')) return '?chain=196&from=0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee&to=0x74b7F16337b8972027F6196A17a631aC6dE26d22&amount=' + encodeURIComponent(query || '1000000000000000000');
   if (path.includes('portfolio')) return '?address=' + encodeURIComponent(query || userAccount) + '&chains=1,196,501';
   if (path.includes('security')) return '?token=' + encodeURIComponent(query || '0x0') + '&chain=1';
