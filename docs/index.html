@@ -1511,6 +1511,8 @@ function showSection(name) {
   document.getElementById('heroSection').classList.toggle('hidden', !isMain);
   document.getElementById('howItWorks').classList.toggle('hidden', !isMain);
   document.getElementById('sectionActivity').classList.toggle('hidden', name !== 'marketplace' && !isMain);
+  const featuresEl = document.getElementById('sectionFeatures');
+  if (featuresEl) featuresEl.classList.toggle('hidden', !isMain);
 
   // Update nav highlighting by matching section name to nav button text
   const sectionMap = { nanopayments: 'Overview', marketplace: 'Agents Marketplace', register: 'Register Agent', dashboard: 'My Dashboard' };
